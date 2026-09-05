@@ -1,0 +1,47 @@
+---
+description: Project-wide conventions for tooling, commits, secrets, and git workflow
+alwaysApply: true
+---
+
+# Conventions
+
+## Tooling
+
+- Package manager: **bun** (repo scripts, husky, prettier)
+- Python worker: **3.11** in `worker/` — Ruff for lint/format (tabs, 100 cols)
+- Formatting: Prettier on markdown, JSON, YAML, shell
+- Do not hand-format differently from Prettier/Ruff output
+
+## Project shape
+
+- Application code as flat modules in `worker/` (`main.py`, `settings.py`, …)
+- Spec: `docs/spec.md` · Progress: `WORKLOG.md`
+- Deploy: `bun deploy` → `homelab:~/doorface`
+- GPU inference on homelab; Mac uses `worker/config/faces/` for enrollment photos
+
+## Secrets
+
+- Never read `.env` or other secret-bearing files unless the user explicitly asks
+- Prefer `worker/.env.example` for defaults
+
+## Commit messages
+
+When the user asks for a commit message, output **text only** — do not stage or commit.
+
+Use **Conventional Commits**: `type(scope): summary` — types: `feat`, `fix`, `chore`, `docs`, `ci`, `build`, `test`, `refactor`, `perf`
+
+- Header: imperative, lowercase after type, max **90 chars**
+- Must pass commitlint (`@commitlint/config-conventional`)
+
+## Git
+
+Do **not** modify git state unless the user explicitly asks.
+
+- **Allowed (read-only):** `git status`, `git diff`, `git log`, etc.
+- **Not allowed without explicit instruction:** `git add`, `git commit`, `git push`, etc.
+
+## Implementation scope
+
+- One WORKLOG phase at a time
+- Minimize diff — no over-engineering for a learning project
+- Match existing patterns in `worker/` and `scripts/` before introducing new abstractions

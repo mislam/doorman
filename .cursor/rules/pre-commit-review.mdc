@@ -1,0 +1,26 @@
+---
+description: "Review staged" — session intent, staged diff, checklist, commit message
+alwaysApply: false
+---
+
+# Pre-commit review (staged only)
+
+Apply when the user says **review staged**, **pre-commit review**, or similar.
+
+Read **git-staged** changes (`git status`, `git diff --cached`). Do **not** stage, commit, or push unless explicitly asked.
+
+## Checklist
+
+1. **Intent** — does staged code match the active WORKLOG phase and user ask?
+2. **Spec** — aligned with `docs/spec.md`?
+3. **Scope** — no unrelated drive-by changes?
+4. **Secrets** — no `.env`, RTSP URLs, or webhook tokens committed?
+5. **Tooling** — `bun lint` passes (or explain what's blocked, e.g. missing venv)
+6. **Docs** — owner doc updated if behavior changed?
+7. **Commit message** — suggest Conventional Commits header (≤ 90 chars) when ready
+
+## Python-specific
+
+- Zone/debounce logic should have tests when non-trivial
+- Dockerfile changes: note CUDA base image version
+- Skip GPU-only paths in Mac CI; document homelab-only steps in `worker/README.md`

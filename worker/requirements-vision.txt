@@ -1,0 +1,4 @@
+# Vision stack — homelab / Docker only
+-r requirements.txt
+insightface>=0.7.3
+onnxruntime-gpu>=1.19.0

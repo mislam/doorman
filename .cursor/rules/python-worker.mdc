@@ -1,0 +1,44 @@
+---
+description: Python vision worker — InsightFace, RTSP, homelab deploy
+globs: worker/**/*.py
+alwaysApply: false
+---
+
+# Python worker (Doorface)
+
+## Stack (locked for v1)
+
+- **InsightFace** — face detect + embedding; gallery match on homelab GPU
+- **opencv-python-headless** — RTSP via `stream.py` (on-demand grab, buffer size 1)
+- **fastapi** + **uvicorn** — HTTP `/recognize` trigger from HA
+- **requests** — HA notify webhook POST
+
+## Code style
+
+- Ruff config in `worker/pyproject.toml` — tabs, double quotes, line length 100
+- Settings via `pydantic-settings` in `worker/settings.py` — extend, don't duplicate env parsing
+- Entrypoint: `python main.py` from `worker/` (Docker CMD uses the same)
+
+## RTSP
+
+- Pull frames **on doorbell event** via `FrameSource.grab_event_frames()` — open, read N, close
+- Do **not** use `FrameSource.frames()` in `/recognize` (infinite loop; dev tools only)
+- Reconnect with backoff on stream failure (`stream.py`)
+- `open(max_attempts=N)` for bounded connect retries on doorbell POSTs
+
+## Face gallery
+
+- Enrollment photos: `worker/config/faces/{name}/*.jpg` (gitignored)
+- Cached embeddings: `config/gallery.pkl` (gitignored; built by `enroll.py`)
+- Recognition threshold via `RECOGNITION_THRESHOLD` env
+
+## Deploy
+
+- Env vars from `worker/.env` only — never hardcode RTSP or webhook secrets
+- Docker + NVIDIA runtime on homelab; port **8768** for `/recognize` and `/health`
+- `bun deploy` from repo root
+
+## Dev without GPU
+
+- Mac: pytest, `bun play-stream` for RTSP smoke test
+- InsightFace integration on homelab only

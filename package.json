@@ -1,0 +1,31 @@
+{
+	"name": "doorface",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"prepare": "husky",
+		"lint": "prettier --check . --ignore-path .gitignore && ./scripts/ruff.sh check",
+		"lint:fix": "prettier --write . --ignore-path .gitignore && ./scripts/ruff.sh fix",
+		"format": "prettier --write . --ignore-path .gitignore",
+		"test": "./scripts/ruff.sh test",
+		"start": "./scripts/run-worker.sh",
+		"play-stream": "./scripts/run-play-stream.sh",
+		"setup": "./scripts/setup-venv.sh",
+		"deploy": "./scripts/deploy.sh",
+		"status": "./scripts/status.sh"
+	},
+	"lint-staged": {
+		"worker/**/*.py": [
+			"./scripts/ruff-staged.sh"
+		],
+		"*.{json,md,yaml,yml}": "prettier --write"
+	},
+	"devDependencies": {
+		"@commitlint/cli": "^21.0.2",
+		"@commitlint/config-conventional": "^21.0.2",
+		"husky": "^9.1.7",
+		"lint-staged": "^17.0.8",
+		"prettier": "^3.8.3"
+	}
+}

@@ -1,0 +1,12 @@
+.venv
+.env
+__pycache__
+*.pyc
+.ruff_cache
+.pytest_cache
+config/gallery.pkl
+config/faces/**/*.jpg
+config/faces/**/*.jpeg
+config/faces/**/*.png
+config/*.jpg
+config/*.png

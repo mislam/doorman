@@ -1,0 +1,4 @@
+[test]
+# Bun's built-in runner (bun test) — limit scope; Python tests use `bun run test` → pytest
+root = "./worker/tests"
+preload = []

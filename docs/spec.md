@@ -1,0 +1,208 @@
+# Doorface — product & technical spec
+
+**Version:** v1 draft · **Status:** RTSP ingest working; recognition not implemented
+
+## Problem
+
+When someone rings the Reolink doorbell, you want to know **who** is there — family by name, or an
+unknown visitor — without opening the app every time.
+
+## Goal (v1)
+
+On **doorbell ring**, grab a few frames from the doorbell RTSP stream, **recognize enrolled family
+faces**, and POST results to a **Home Assistant webhook**. HA sends the phone notification (names,
+unknown count, optional snapshot).
+
+Keep the worker stateless per event: enroll faces from photos on disk; no database.
+
+## Out of scope (v1)
+
+- Continuous yard / curb monitoring
+- Person tracking or danger-zone polygons
+- Cloud face APIs (AWS Rekognition, etc.)
+- Automatic guest enrollment from a single visit
+
+## Inputs
+
+| Input      | Detail                                                      |
+| ---------- | ----------------------------------------------------------- |
+| Trigger    | Doorbell press (HA automation → HTTP POST to worker)        |
+| Video      | Reolink doorbell **RTSP** (grab frames only when triggered) |
+| Enrollment | Photos per person under `worker/config/faces/{name}/`       |
+| Config     | Env vars + face gallery on disk — no DB                     |
+
+**Open questions** (fill before implementation):
+
+- [ ] HA automation: Reolink doorbell entity → webhook to worker
+- [ ] HA notify webhook URL (separate from trigger, or same with reply payload)
+- [ ] Main vs sub stream for face crops (sub may be enough at 640×480; tune on homelab)
+- [ ] Family member list and enrollment photos
+
+## Architecture
+
+```mermaid
+flowchart LR
+  bell[Doorbell pressed] --> ha_trig[HA automation]
+  ha_trig -->|POST /recognize| worker[Doorface worker]
+  worker --> grab[RTSP frame grab]
+  grab --> det[Face detect + embed]
+  det --> match[Match vs enrolled gallery]
+  match --> ha_out[HA webhook POST]
+  ha_out --> notify[Phone notification]
+```
+
+### Pipeline (per doorbell event)
+
+1. **Trigger** — HA (or manual curl) POSTs to worker; optional secret header
+2. **Grab** — open RTSP, read N frames (e.g. 3–5), pick best frame(s) with visible faces
+3. **Detect** — find face bounding boxes in frame
+4. **Recognize** — compare embeddings against enrolled family gallery
+5. **Notify** — POST JSON to HA webhook, e.g. `{"event":"doorbell","names":["Alice"],"unknown":0}`
+6. **Close** — release RTSP; idle until next ring
+
+No always-on inference loop in v1.
+
+## Stack decisions
+
+### Face recognition: InsightFace
+
+| Criterion | InsightFace                         | face_recognition (dlib)     |
+| --------- | ----------------------------------- | --------------------------- |
+| GPU       | ✓ CUDA on 3060                      | CPU-oriented                |
+| Accuracy  | Strong at angles / outdoor doorbell | Good indoors; weaker angles |
+| License   | MIT (library); check model terms    | MIT + dlib BSL              |
+| Fit       | **v1 choice** for homelab GPU       | Fine for Mac enrollment dev |
+
+Use a compact model pack (e.g. `buffalo_l` or `buffalo_s`) for detect + embed. Gallery = one
+embedding per enrolled photo (average or best-match across photos per person).
+
+### Libraries
+
+| Package                  | Role                               |
+| ------------------------ | ---------------------------------- |
+| `insightface`            | Face detect + embedding            |
+| `onnxruntime-gpu`        | Inference backend on homelab       |
+| `opencv-python-headless` | RTSP ingest (existing `stream.py`) |
+| `requests`               | HA webhook POST                    |
+| `fastapi` + `uvicorn`    | HTTP trigger endpoint `/recognize` |
+
+### Why not (for v1)
+
+| Alternative    | Reason to defer                            |
+| -------------- | ------------------------------------------ |
+| RF-DETR / YOLO | Person bbox, not identity — wrong problem  |
+| Frigate face   | Couples to NVR; want a small custom worker |
+| CompreFace     | Extra service; less hands-on               |
+| Cloud APIs     | Privacy, cost, offline requirement         |
+
+## RTSP notes
+
+Reuses `stream.py` (buffer size 1, single `read()`, reconnect backoff). Frames are pulled **on
+demand** when the bell rings — not a 24/7 loop.
+
+- Prefer stable LAN path (homelab wired)
+- Substream (~640×480) is OK to start; switch to main stream if face crops are too small
+- First frame after open can be slow (warmup); grab multiple frames per event
+
+## Face enrollment
+
+Before recognition works:
+
+1. Create `worker/config/faces/{name}/` for each family member (e.g. `alice/`, `bob/`)
+2. Add 3–10 clear face photos per person (varied angle/lighting, doorbell-like distance if possible)
+3. Run `enroll.py` (Phase 1) to build `config/gallery.pkl` or per-person embeddings cache
+4. Re-run enrollment when adding photos or new family members
+
+**Guests (post-v1):** same folder layout under `config/faces/guest_jane/`; document in WORKLOG
+backlog.
+
+## Home Assistant integration
+
+### Trigger (doorbell → worker)
+
+```yaml
+# Example — adjust entity and worker URL
+automation:
+  - alias: Doorface — doorbell pressed
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.reolink_doorbell
+        to: "on"
+    actions:
+      - action: rest_command.doorface_recognize
+        # or webhook to http://homelab:8768/recognize
+```
+
+### Notify (worker → HA)
+
+```yaml
+automation:
+  - alias: Doorface — notify who is at the door
+    triggers:
+      - trigger: webhook
+        webhook_id: doorman_notify
+        allowed_methods: [POST]
+    actions:
+      - action: notify.mobile_app
+        data:
+          title: "Doorbell"
+          message: >
+            {% set names = trigger.json.names | default([]) %} {% if names | length > 0 %}
+              {{ names | join(', ') }} at the door
+            {% else %}
+              Unknown visitor ({{ trigger.json.unknown | default(1) }})
+            {% endif %}
+```
+
+Worker POST example: `{"event":"doorbell","names":["Alice","Bob"],"unknown":0,"ts":"..."}`.
+
+## Phases
+
+| Phase             | Deliverable                                      | Where         |
+| ----------------- | ------------------------------------------------ | ------------- |
+| **0 — RTSP**      | `stream.py` + `play_stream` smoke test           | Mac + homelab |
+| **1 — Recognize** | Enroll gallery + detect/match on still or RTSP   | Homelab GPU   |
+| **2 — Integrate** | `/recognize` HTTP + HA webhook notify            | Homelab       |
+| **3 — Ship**      | Docker + `bun deploy` + `/health` + doorbell E2E | `~/doorface`  |
+| **4 — Tune**      | Thresholds, stream choice, FN/FP on real rings   | Ongoing       |
+
+## Backlog (post-v1)
+
+| Feature               | Needs                                       |
+| --------------------- | ------------------------------------------- |
+| Guest enrollment      | Same gallery layout; optional “guest” label |
+| Unknown face snapshot | Save crop to `config/unknown/` for review   |
+| Multi-face per ring   | List all names + unknown count in one alert |
+| Active hours / DND    | HA-side only                                |
+
+## Shared homelab GPU
+
+See [`homelab.md`](homelab.md). InsightFace + small ONNX model is typically **&lt;1 GB VRAM** —
+comfortable next to other GPU services on the 3060.
+
+## Development environments
+
+| Machine                | Role                   | What runs here                                 |
+| ---------------------- | ---------------------- | ---------------------------------------------- |
+| **Dev machine (Mac)**        | Edit, lint, unit tests | pytest, RTSP smoke test (`bun play-stream`)    |
+| **Homelab (RTX 3060)** | GPU + prod             | InsightFace, live RTSP on ring, Docker, HA E2E |
+
+Mac does not need CUDA for day-to-day plumbing tests. Face enrollment and recognition integration
+run on homelab.
+
+## Deploy pattern
+
+| Step     | Action                                                        |
+| -------- | ------------------------------------------------------------- |
+| Code     | Mac — `bun run test`, `bun lint`                              |
+| GPU test | Homelab — venv + `requirements-vision.txt`, curl `/recognize` |
+| Deploy   | `bun deploy` → rsync to `homelab:~/doorface`                  |
+| Secrets  | `~/doorface/.env` only (RTSP, HA webhooks)                    |
+
+## Acceptance criteria (v1)
+
+- [ ] Doorbell press triggers recognition within ~5 s end-to-end
+- [ ] Enrolled family member at door → HA notification with their name(s)
+- [ ] Unknown face → notification indicates unknown visitor
+- [ ] No RTSP connection left open between doorbell events
+- [ ] Adding a guest via new photos + re-enroll updates recognition

@@ -1,0 +1,33 @@
+node_modules
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Python worker
+worker/.venv/
+worker/.env
+**/__pycache__/
+*.py[cod]
+worker/.ruff_cache/
+worker/.pytest_cache/
+worker/*.egg-info/
+worker/dist/
+worker/build/
+worker/.cache/
+
+# Calibration / enrollment (gitignored media)
+worker/config/gallery.pkl
+worker/config/faces/**/*.jpg
+worker/config/faces/**/*.jpeg
+worker/config/faces/**/*.png
+worker/config/*.jpg
+worker/config/*.png
+
+# Editor
+.eslintcache
