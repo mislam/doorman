@@ -20,23 +20,12 @@ import numpy as np
 
 from gallery import DEFAULT_MODEL, EnrolledFace, Gallery, iter_enrollment_photos, save_gallery
 from settings import Settings
+from vision_runtime import create_face_app, log_inference_providers
 
 if TYPE_CHECKING:
 	from numpy.typing import NDArray
 
 logger = logging.getLogger(__name__)
-
-
-def create_face_app(model_name: str = DEFAULT_MODEL) -> Any:
-	"""Load InsightFace detect + embed model (lazy import — homelab only)."""
-	from insightface.app import FaceAnalysis
-
-	app = FaceAnalysis(
-		name=model_name,
-		providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-	)
-	app.prepare(ctx_id=0, det_size=(640, 640))
-	return app
 
 
 def embed_photo(app: Any, photo_path: Path) -> NDArray[np.float32] | None:
@@ -97,6 +86,7 @@ def main() -> None:
 		format="%(levelname)s %(name)s: %(message)s",
 	)
 
+	log_inference_providers()
 	settings = Settings()
 	faces_dir = Path(settings.faces_dir)
 	gallery_path = Path(settings.gallery_path)

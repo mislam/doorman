@@ -7,6 +7,9 @@ description = "Doorface worker — doorbell face recognition and HA notify"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+	"ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning:starlette.testclient",
+]
 
 [tool.ruff]
 target-version = "py311"

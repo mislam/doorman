@@ -12,9 +12,9 @@ services:
     ports:
       - "8768:8768"
     volumes:
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - hf_cache:/root/.cache
-    # Phase 1: InsightFace models cache under /root/.insightface — extend volumes if needed
+      - insightface_models:/root/.insightface
     deploy:
       resources:
         reservations:
@@ -22,19 +22,19 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # TODO: enable when /health endpoint exists
-    # healthcheck:
-    #   test:
-    #     [
-    #       "CMD",
-    #       "python3.11",
-    #       "-c",
-    #       "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8768/health')",
-    #     ]
-    #   interval: 30s
-    #   timeout: 5s
-    #   start_period: 120s
-    #   retries: 3
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3.11",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8768/health')",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
 
 volumes:
   hf_cache:
+  insightface_models:

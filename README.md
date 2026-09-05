@@ -17,36 +17,50 @@ Self-hosted on the homelab GPU (RTX 3060). Learning project — small scope, dai
 
 ## Commands
 
-| Command                     | What                                             |
-| --------------------------- | ------------------------------------------------ |
-| `bun setup`                 | Create `worker/.venv` and install dev deps       |
-| `bun lint` / `bun lint:fix` | Prettier + Ruff                                  |
-| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)  |
-| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)            |
-| `bun enroll`                | Build gallery.pkl from `config/faces/` (homelab) |
-| `bun start`                 | Run `worker/main.py` (scaffold until Phase 1)    |
-| `bun run deploy`            | Rsync `worker/` to homelab + Docker rebuild      |
-| `bun status`                | Homelab GPU + compose snapshot                   |
+| Command                     | What                                                  |
+| --------------------------- | ----------------------------------------------------- |
+| `bun setup`                 | Create `worker/.venv` and install dev deps            |
+| `bun lint` / `bun lint:fix` | Prettier + Ruff                                       |
+| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)       |
+| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)                 |
+| `bun enroll`                | Sync `config/faces/` → homelab + build `gallery.pkl`  |
+| `bun start`                 | Run worker on homelab (`-- --once` for one-shot test) |
+| `bun run deploy`            | Rsync code → homelab + Docker rebuild (not gallery)   |
+| `bun status`                | Homelab GPU + compose snapshot                        |
 
-Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorface`).
+Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorface`). First Docker build
+can take 10–15 min (CUDA base + InsightFace). Use `DEPLOY_SKIP_BUILD=1` for code-only rsync;
+`DEPLOY_QUIET=1` to hide build log (Tasmi-style).
 
-## Local development (Mac)
+## Development workflow
+
+**Mac (fast loop)** — edit code, pytest, lint, RTSP smoke test:
 
 ```bash
-bun install
-bun setup
+bun install && bun setup
 cd worker && cp .env.example .env   # STREAM_URL for play-stream
-bun play-stream -- -v             # verify doorbell stream
 bun run test
+bun play-stream -- -v               # optional: verify stream URL
 ```
 
-| What                          | Mac | Homelab          |
-| ----------------------------- | --- | ---------------- |
-| pytest, lint, RTSP smoke test | ✓   | optional via SSH |
-| Face recognition + HA E2E     | —   | ✓                |
+**Homelab (GPU truth)** — after code or face changes:
 
-GPU inference and doorbell integration run on homelab. See [docs/spec.md](docs/spec.md) and
-[worker/README.md](worker/README.md).
+```bash
+bun enroll                          # photos changed → sync faces + rebuild gallery.pkl
+bun run deploy                      # code changed → rsync + Docker rebuild
+ssh homelab 'cd ~/doorface && .venv/bin/python main.py --once'   # test recognition
+```
+
+| What                          | Mac                       | Homelab |
+| ----------------------------- | ------------------------- | ------- |
+| pytest, lint, RTSP smoke test | ✓                         | —       |
+| `bun enroll` (sync + gallery) | ✓ runs on homelab via SSH | ✓       |
+| InsightFace / recognition     | —                         | ✓       |
+| Docker prod (`/recognize`)    | —                         | ✓       |
+
+You don't run recognition locally on Mac — pytest mocks InsightFace. Real inference needs homelab,
+but you only deploy when **code** changes; `bun enroll` is the lightweight path for **photo**
+changes.
 
 ## Layout
 
@@ -62,4 +76,4 @@ scripts/
 
 ## Status
 
-RTSP ingest works. Face recognition + HA notify in Phase 1. See [WORKLOG.md](WORKLOG.md).
+RTSP ingest and recognition pipeline work. HA notify in Phase 2. See [WORKLOG.md](WORKLOG.md).

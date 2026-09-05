@@ -1,4 +1,10 @@
 # Vision stack — homelab / Docker only
 -r requirements.txt
-insightface>=0.7.3
-onnxruntime-gpu>=1.19.0
+# Pin wheel package — 0.7.3 is sdist-only (needs g++ build); 1.0.1 has a manylinux wheel.
+# Do not `pip install insightface` with deps: it pulls cpu `onnxruntime` and breaks GPU.
+onnxruntime-gpu[cuda,cudnn]>=1.19.0,<1.27
+insightface==1.0.1
+onnx>=1.14.0
+tqdm>=4.0
+scipy>=1.10
+scikit-image>=0.21

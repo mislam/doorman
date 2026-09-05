@@ -8,7 +8,8 @@ Spec: [`../docs/spec.md`](../docs/spec.md) · Commands: [`../README.md`](../READ
 
 ```
 worker/
-  main.py           entrypoint (HTTP server — Phase 1)
+  main.py           entrypoint (HTTP /recognize, --once CLI)
+  recognize.py      detect + match against gallery
   gallery.py        gallery pickle format + photo scan
   enroll.py         build gallery.pkl from config/faces/
   stream.py         RTSP frame grab (on demand)
@@ -25,14 +26,27 @@ worker/
 
 ## Mac vs homelab
 
-|                         | Mac (dev)              | Homelab (3060)   |
-| ----------------------- | --------------------- | ---------------- |
-| Edit code, pytest, ruff | ✓                     | via SSH optional |
-| RTSP smoke test         | ✓ (`bun play-stream`) | ✓                |
-| InsightFace + doorbell  | —                     | ✓                |
-| Docker prod             | —                     | ✓                |
+|                         | Mac (dev)              | Homelab (3060)            |
+| ----------------------- | --------------------- | ------------------------- |
+| Edit code, pytest, ruff | ✓                     | via SSH optional          |
+| RTSP smoke test         | ✓ (`bun play-stream`) | ✓                         |
+| `bun enroll` (via SSH)  | ✓                     | ✓ (local if venv)         |
+| InsightFace + doorbell  | —                     | ✓                         |
+| Docker prod             | —                     | ✓ (`cudnn-runtime` + GPU) |
 
 `bun setup` installs dev deps including OpenCV (needed for `stream.py` and pytest).
+
+## Dependencies
+
+Three pip files — base + two overlays (each includes base via `-r requirements.txt`):
+
+| File                      | Install via                | Why separate                          |
+| ------------------------- | -------------------------- | ------------------------------------- |
+| `requirements.txt`        | (included by others)       | Shared runtime: FastAPI, OpenCV, etc. |
+| `requirements-dev.txt`    | `bun setup`                | Mac lint/test only                    |
+| `requirements-vision.txt` | Docker build, `bun enroll` | InsightFace + CUDA — homelab only     |
+
+Do not merge vision into dev: `onnxruntime-gpu` does not belong on Mac.
 
 ## Setup
 
@@ -56,9 +70,17 @@ cd worker && cp .env.example .env
 
 ## Homelab
 
+One-time: create secrets on the server (never rsync'd from Mac):
+
+```bash
+ssh homelab 'cd ~/doorface && cp .env.example .env && nano .env'
+```
+
+Set `STREAM_URL` at minimum. Then deploy:
+
 ```bash
 bun run deploy
-cd ~/doorface && docker compose up -d
+cd ~/doorface && docker compose up -d   # or rely on deploy to recreate
 ```
 
 ## Tests

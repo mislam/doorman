@@ -1,9 +1,9 @@
 # Face enrollment
 
-Recognition compares doorbell frames to photos on disk. **Add folders → run enroll on homelab.**
+Recognition compares doorbell frames to photos on disk. **Add folders on Mac → `bun enroll` →
+done.**
 
-Paths: `worker/config/faces/{name}/` on Mac · `~/doorface/config/faces/{name}/` on homelab after
-deploy.
+Paths: `worker/config/faces/{name}/` on Mac · same tree on homelab after sync.
 
 ## Photos
 
@@ -29,26 +29,22 @@ config/faces/
     phone-1.jpg
 ```
 
-## Enroll (homelab)
+## Enroll
 
-Do this on the **homelab** (InsightFace needs the GPU). From your Mac:
+From your Mac (after adding or changing photos):
 
 ```bash
-# 1. Put photos in worker/config/faces/{name}/ on Mac
-
-# 2. Copy to homelab
-rsync -av worker/config/faces/ homelab:~/doorface/config/faces/
-
-# 3. Build gallery (first time: create venv + vision deps on homelab)
-ssh homelab 'cd ~/doorface && \
-  test -d .venv || (python3.11 -m venv .venv && .venv/bin/pip install -r requirements-vision.txt) && \
-  .venv/bin/python enroll.py -v'
+bun enroll              # sync faces → homelab, build gallery.pkl there
+bun enroll -- -v        # verbose per-photo log
 ```
 
-You should see: `Wrote N embedding(s) for M person(s) → config/gallery.pkl`
+`bun enroll` rsyncs `worker/config/faces/` to homelab and runs `enroll.py` in the Docker worker
+(GPU). Run `bun run deploy` once first so the image exists.
 
-**Whenever you add or change photos, run steps 2–3 again.** The worker reads `gallery.pkl`; it does
-not watch the folders.
+`bun run deploy` also copies `config/faces/` (with the rest of `worker/`), but does **not** touch
+`gallery.pkl` on homelab — always run `bun enroll` after photo changes.
+
+You should see: `Wrote N embedding(s) for M person(s) → config/gallery.pkl`
 
 ## Adding a guest
 
@@ -57,20 +53,23 @@ Same flow as family — no separate system.
 1. **While they're visiting** — iPhone photo (or doorbell snapshot if they're at the door).
 2. **On Mac** — `mkdir worker/config/faces/jane` and drop in 1–3 photos. First name or nickname is
    fine (`jane`, not `guest_jane`).
-3. **Rsync + enroll** — same commands as above.
+3. **`bun enroll`** — sync + rebuild gallery.
 4. **Next ring** — they should show up by name.
 
-When they stop visiting, delete `config/faces/jane/` on homelab, re-run enroll, and they're gone.
+When they stop visiting, delete `worker/config/faces/jane/` on Mac, run `bun enroll` again.
 
 ## If someone isn't recognized
 
-Add 2–3 more **doorbell** photos of that person at the door, rsync, enroll again.
+Add 2–3 more **doorbell** photos of that person at the door, then `bun enroll` again.
 
 ## Troubleshooting
 
-| Problem              | Fix                                                 |
-| -------------------- | --------------------------------------------------- |
-| No faces enrolled    | Face not visible in photo — try clearer iPhone shot |
-| `insightface` import | Run `pip install -r requirements-vision.txt` once   |
+| Problem                | Fix                                                        |
+| ---------------------- | ---------------------------------------------------------- |
+| No faces enrolled      | Face not visible in photo — try clearer iPhone shot        |
+| `insightface` import   | Run `bun run deploy` to rebuild the Docker image           |
+| `python3.11` / Docker  | Run `bun run deploy` first; enroll uses Docker on homelab  |
+| `unknown flag: --gpus` | Pull latest scripts — enroll uses `docker run --gpus` now  |
+| SSH / rsync fails      | Check `DEPLOY_HOST` (default `homelab`) in `~/.ssh/config` |
 
 Env vars (`FACES_DIR`, `GALLERY_PATH`): [`worker/README.md`](../worker/README.md).

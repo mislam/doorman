@@ -1,4 +1,6 @@
-# Core runtime (Mac + homelab)
+# Core runtime (Mac venv + Docker base).
+# Dev:    requirements-dev.txt    → bun setup (pytest, ruff)
+# Vision: requirements-vision.txt → Docker / bun enroll (InsightFace, GPU)
 pydantic-settings>=2.7.0
 requests>=2.32.0
 opencv-python-headless>=4.10.0

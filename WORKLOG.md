@@ -20,8 +20,8 @@ Suggested files: `enroll.py`, `recognize.py`, wire trigger stub in `main.py`.
 
 - [x] `stream.py` — RTSP grab on demand (reconnect backoff)
 - [x] `enroll.py` — build gallery from `config/faces/`
-- [ ] `recognize.py` — InsightFace detect + match
-- [ ] `main.py` — HTTP `/recognize` or CLI for testing
+- [x] `recognize.py` — InsightFace detect + match
+- [x] `main.py` — HTTP `/recognize` or CLI for testing
 
 ## Backlog
 

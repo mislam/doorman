@@ -17,6 +17,8 @@ ssh "$HOST" "
 	cd ~/$REMOTE_DIR
 	if command -v docker >/dev/null 2>&1 && [ -f compose.yaml ]; then
 		docker compose ps 2>/dev/null || true
+		echo ''
+		docker system df 2>/dev/null || true
 	fi
 	if command -v nvidia-smi >/dev/null 2>&1; then
 		echo ''
