@@ -24,12 +24,12 @@ Keep the worker stateless per event: enroll faces from photos on disk; no databa
 
 ## Inputs
 
-| Input      | Detail                                                      |
-| ---------- | ----------------------------------------------------------- |
-| Trigger    | Doorbell press (HA automation → HTTP POST to worker)        |
-| Video      | Reolink doorbell **RTSP** (grab frames only when triggered) |
-| Enrollment | Photos per person under `worker/config/faces/{name}/`       |
-| Config     | Env vars + face gallery on disk — no DB                     |
+| Input      | Detail                                                       |
+| ---------- | ------------------------------------------------------------ |
+| Trigger    | Doorbell press (HA automation → HTTP POST to worker)         |
+| Video      | Reolink doorbell **RTSP** (grab frames only when triggered)  |
+| Enrollment | Photos per person on homelab `config/faces/{name}/` (web UI) |
+| Config     | Env vars + face gallery on disk — no DB                      |
 
 **Open questions** (fill before implementation):
 
@@ -108,8 +108,8 @@ demand** when the bell rings — not a 24/7 loop.
 
 Step-by-step guide: [`docs/enrollment.md`](enrollment.md).
 
-Gallery layout: `worker/config/faces/{name}/` → enroll on homelab → `config/gallery.pkl`. Family and
-guests use the same folders; re-enroll after changes. See [`docs/enrollment.md`](enrollment.md).
+Gallery layout: `config/faces/{name}/` on homelab → **Enroll now** in the web UI rebuilds
+`gallery.pkl`. See [`docs/enrollment.md`](enrollment.md).
 
 ## Home Assistant integration
 
@@ -187,12 +187,13 @@ run on homelab.
 
 ## Deploy pattern
 
-| Step     | Action                                                        |
-| -------- | ------------------------------------------------------------- |
-| Code     | Mac — `bun run test`, `bun lint`                              |
-| GPU test | Homelab — venv + `requirements-vision.txt`, curl `/recognize` |
-| Deploy   | `bun run deploy` → rsync to `homelab:~/doorface`              |
-| Secrets  | `~/doorface/.env` only (RTSP, HA webhooks)                    |
+| Step     | Action                                                |
+| -------- | ----------------------------------------------------- |
+| Code     | Mac — `bun run test`, `bun lint`                      |
+| GPU test | Homelab — web UI enroll + `curl POST /recognize`      |
+| Deploy   | `bun run deploy` → rsync code to `homelab:~/doorface` |
+| Faces    | Web UI at `/enroll` (not rsync'd from Mac)            |
+| Secrets  | `~/doorface/.env` only (RTSP, HA webhooks)            |
 
 ## Acceptance criteria (v1)
 

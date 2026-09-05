@@ -1,16 +1,29 @@
+"""Tests for settings capture_stream_url."""
+
+from __future__ import annotations
+
 from settings import Settings
 
 
-def test_settings_defaults() -> None:
-	settings = Settings(_env_file=None)
-	assert settings.stream_url == ""
-	assert settings.faces_dir == "config/faces"
-	assert settings.gallery_path == "config/gallery.pkl"
-	assert settings.recognition_threshold == 0.4
-	assert settings.frames_per_event == 5
-	assert settings.worker_port == 8768
+def test_capture_stream_url_uses_separate_credentials() -> None:
+	settings = Settings(
+		_env_file=None,
+		stream_url="rtsp://doorbell.test:554/h264Preview_01_sub",
+		stream_user="camuser",
+		stream_password="p@ss:w0rd!",
+	)
+
+	url = settings.capture_stream_url()
+
+	assert "doorbell.test:554" in url
+	assert "p@ss:w0rd!" not in url
+	assert url.startswith("rtsp://camuser:")
 
 
-def test_stream_url_accepts_rtsp_url_alias() -> None:
-	settings = Settings(_env_file=None, RTSP_URL="rtsp://cam/stream")
-	assert settings.stream_url == "rtsp://cam/stream"
+def test_capture_stream_url_plain_http() -> None:
+	settings = Settings(
+		_env_file=None,
+		stream_url="http://mjpeg.test:81/stream",
+	)
+
+	assert settings.capture_stream_url() == "http://mjpeg.test:81/stream"

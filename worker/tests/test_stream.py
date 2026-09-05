@@ -6,12 +6,50 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from stream import FrameSource, mask_stream_url
+from stream import (
+	FrameSource,
+	build_stream_url,
+	mask_stream_url,
+	preview_prime_frames_for_url,
+	warmup_frames_for_url,
+)
 
 
 def test_mask_stream_url_hides_credentials() -> None:
 	url = "rtsp://admin:secret@doorbell.test:554/h264Preview_01_sub"
 	assert mask_stream_url(url) == "rtsp://***@doorbell.test:554/h264Preview_01_sub"
+
+
+def test_warmup_frames_for_url() -> None:
+	assert warmup_frames_for_url("rtsp://cam/stream") == 30
+	assert warmup_frames_for_url("http://esp/stream") == 8
+
+
+def test_preview_prime_frames_for_url() -> None:
+	assert preview_prime_frames_for_url("rtsp://cam/stream") == 3
+	assert preview_prime_frames_for_url("http://esp/stream") == 1
+
+
+def test_build_stream_url_injects_encoded_credentials() -> None:
+	base = "rtsp://doorbell.test:554/h264Preview_01_sub"
+	password = "p@ss:w0rd!"
+	url = build_stream_url(base, "camuser", password)
+
+	assert url.startswith("rtsp://")
+	assert "doorbell.test:554" in url
+	assert password not in url
+	assert "camuser:" in url
+	assert mask_stream_url(url) == "rtsp://***@doorbell.test:554/h264Preview_01_sub"
+
+
+def test_build_stream_url_keeps_embedded_credentials() -> None:
+	url = "rtsp://admin:secret@doorbell.test:554/h264Preview_01_sub"
+	assert build_stream_url(url) == url
+
+
+def test_build_stream_url_http_unchanged_without_credentials() -> None:
+	url = "http://mjpeg.test:81/stream"
+	assert build_stream_url(url) == url
 
 
 def test_read_latest_returns_frame_on_success() -> None:
@@ -46,10 +84,12 @@ def test_open_retries_until_capture_opens(
 	mock_capture_cls: MagicMock,
 	mock_sleep: MagicMock,
 ) -> None:
+	frame = np.zeros((2, 2, 3), dtype=np.uint8)
 	failing = MagicMock()
 	failing.isOpened.return_value = False
 	working = MagicMock()
 	working.isOpened.return_value = True
+	working.read.return_value = (True, frame)
 	mock_capture_cls.side_effect = [failing, working]
 
 	source = FrameSource(url="rtsp://cam/stream", reconnect_backoff=(0.5, 1.0))
@@ -71,7 +111,13 @@ def test_frames_backoffs_on_read_failure(
 	cap = MagicMock()
 	cap.isOpened.return_value = True
 	mock_capture_cls.return_value = cap
-	cap.read.side_effect = [(True, frame), (False, None), (True, frame)]
+	cap.read.side_effect = [
+		(True, frame),  # warmup in open()
+		(True, frame),  # first frames() iteration
+		(False, None),  # read failure
+		(True, frame),  # warmup on reconnect
+		(True, frame),  # second frames() iteration
+	]
 
 	source = FrameSource(url="rtsp://cam/stream", reconnect_backoff=(0.1,))
 	source.open()

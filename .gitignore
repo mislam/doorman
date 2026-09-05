@@ -1,4 +1,9 @@
 node_modules
+enroll-ui/node_modules/
+enroll-ui/.svelte-kit/
+worker/static/enroll/**
+!worker/static/enroll/index.html
+worker/config/enroll_sessions/
 
 # OS
 .DS_Store

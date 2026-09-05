@@ -55,10 +55,10 @@ def main() -> None:
 		print("STREAM_URL is empty — set it in worker/.env", file=sys.stderr)
 		raise SystemExit(1)
 
-	print(f"Stream: {mask_stream_url(settings.stream_url)}")
+	print(f"Stream: {mask_stream_url(settings.capture_stream_url())}")
 	print(f"Grabbing {args.frames} frame(s)…\n")
 
-	source = FrameSource(url=settings.stream_url)
+	source = FrameSource(url=settings.capture_stream_url())
 	start = time.perf_counter()
 	grabbed = source.grab_event_frames(args.frames)
 

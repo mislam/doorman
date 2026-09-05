@@ -7,15 +7,21 @@ import json
 import logging
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
+from enroll_web import router as enroll_router
 from recognize import log_result, recognize_from_settings, result_to_payload
 from settings import Settings, __version__
+from stream import preview_hub
 from vision_runtime import log_inference_providers, warmup_face_app
 
 logger = logging.getLogger(__name__)
+
+ENROLL_STATIC_DIR = Path(__file__).resolve().parent / "static" / "enroll"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -25,6 +31,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 	@asynccontextmanager
 	async def lifespan(_app: FastAPI):
 		log_inference_providers()
+		if settings.stream_url:
+			logger.info("Starting enroll preview stream (parallel with model load)...")
+			preview_hub.start(settings.capture_stream_url())
 		logger.info("Loading InsightFace models (port opens when this finishes)...")
 		warmup_face_app()
 		logger.info(
@@ -33,8 +42,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 			settings.worker_port,
 		)
 		yield
+		preview_hub.stop()
 
 	app = FastAPI(title="Doorface", version=__version__, lifespan=lifespan)
+	app.state.settings = settings
 
 	@app.get("/health")
 	def health() -> dict[str, str]:
@@ -54,6 +65,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 		log_result(result)
 		return result_to_payload(result)
+
+	app.include_router(enroll_router)
+
+	if ENROLL_STATIC_DIR.is_dir():
+		app.mount(
+			"/enroll",
+			StaticFiles(directory=ENROLL_STATIC_DIR, html=True),
+			name="enroll-ui",
+		)
+	else:
+		logger.warning("Enroll UI not built — run: bun run build:enroll")
 
 	return app
 

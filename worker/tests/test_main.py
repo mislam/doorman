@@ -17,6 +17,7 @@ def test_recognize_endpoint_returns_payload() -> None:
 
 	with (
 		patch("main.warmup_face_app"),
+		patch("main.preview_hub"),
 		patch("main.recognize_from_settings") as mock_recognize,
 	):
 		mock_recognize.return_value = RecognitionResult(names=["alice"], unknown=0, matches=[])
@@ -37,6 +38,7 @@ def test_recognize_endpoint_503_when_gallery_missing() -> None:
 
 	with (
 		patch("main.warmup_face_app"),
+		patch("main.preview_hub"),
 		patch("main.recognize_from_settings", side_effect=FileNotFoundError("no gallery")),
 	):
 		client = TestClient(app)
@@ -50,7 +52,7 @@ def test_health_endpoint() -> None:
 	settings = Settings(_env_file=None)
 	app = create_app(settings)
 
-	with patch("main.warmup_face_app"):
+	with patch("main.warmup_face_app"), patch("main.preview_hub"):
 		client = TestClient(app)
 		response = client.get("/health")
 

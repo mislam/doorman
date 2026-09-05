@@ -1,10 +1,8 @@
 """Build the face gallery from enrollment photos (homelab GPU / InsightFace).
 
-Usage (from repo root)::
+Called by the enroll web UI (/enroll/api/rebuild) and optionally from Docker::
 
-    bun enroll
-
-Requires ``requirements-vision.txt`` (InsightFace + onnxruntime-gpu).
+    docker compose exec worker python3.11 enroll.py -v
 """
 
 from __future__ import annotations

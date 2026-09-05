@@ -1,5 +1,5 @@
 # Doorface worker — GPU image (CUDA + cuDNN for ONNX Runtime)
-# Base matches tasmi-asr pattern: cudnn runtime, not cuda-runtime-only.
+# Use cudnn runtime base, not cuda-runtime-only.
 
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
@@ -32,8 +32,10 @@ RUN python3.11 -m pip install --upgrade pip \
 	&& python3.11 -c "import onnxruntime as ort; ort.preload_dlls(cuda=True, cudnn=True); providers=ort.get_available_providers(); assert 'CUDAExecutionProvider' in providers, providers" \
 	&& python3.11 -c "from insightface.app import FaceAnalysis"
 
-COPY main.py settings.py stream.py gallery.py enroll.py recognize.py vision_runtime.py ./
-COPY config/ ./config/
+COPY main.py settings.py stream.py gallery.py enroll.py enroll_web.py recognize.py vision_runtime.py ./
+COPY static/enroll/ ./static/enroll/
+# Runtime data (faces, gallery.pkl) comes from the compose bind mount — not the image.
+RUN mkdir -p config/faces config/enroll_sessions
 
 CMD ["python3.11", "main.py"]
 

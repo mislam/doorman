@@ -116,13 +116,47 @@ def test_recognize_from_settings_grabs_frames(tmp_path) -> None:
 		gallery_path=str(gallery_path),
 	)
 
-	with patch("recognize.FrameSource") as mock_source_cls:
+	with (
+		patch("recognize.preview_hub.latest_frame", return_value=None),
+		patch("recognize.FrameSource") as mock_source_cls,
+	):
 		mock_source_cls.return_value.grab_event_frames.return_value = [frame]
 		result = recognize_from_settings(settings, face_app=mock_app, gallery=gallery)
 
 	assert result.names == ["alice"]
 	mock_source_cls.assert_called_once_with("rtsp://cam/stream")
 	mock_source_cls.return_value.grab_event_frames.assert_called_once_with(5)
+
+
+def test_recognize_from_settings_uses_preview_hub(tmp_path) -> None:
+	gallery_path = tmp_path / "gallery.pkl"
+	gallery = Gallery(
+		faces=[EnrolledFace(name="alice", embedding=np.array([1.0, 0.0]), photo="a.jpg")],
+	)
+	from gallery import save_gallery
+
+	save_gallery(gallery, gallery_path)
+
+	frame = np.zeros((2, 2, 3), dtype=np.uint8)
+	mock_app = MagicMock()
+	mock_app.get.return_value = [_face([1.0, 0.0])]
+
+	settings = Settings(
+		_env_file=None,
+		stream_url="rtsp://cam/stream",
+		gallery_path=str(gallery_path),
+		frames_per_event=2,
+	)
+
+	with (
+		patch("recognize.preview_hub.latest_frame", return_value=frame),
+		patch("recognize.FrameSource") as mock_source_cls,
+		patch("recognize.time.sleep"),
+	):
+		result = recognize_from_settings(settings, face_app=mock_app, gallery=gallery)
+
+	assert result.names == ["alice"]
+	mock_source_cls.assert_not_called()
 
 
 def test_recognize_from_settings_requires_stream_url() -> None:

@@ -16,8 +16,8 @@ alwaysApply: true
 
 - Application code as flat modules in `worker/` (`main.py`, `settings.py`, …)
 - Spec: `docs/spec.md` · Progress: `WORKLOG.md`
-- Deploy: `bun run deploy` → `homelab:~/doorface`
-- GPU inference on homelab; Mac uses `worker/config/faces/` for enrollment photos
+- Deploy: `bun run deploy` → `homelab:~/doorface` (Docker on homelab — no host Python/venv there)
+- GPU inference on homelab; enroll faces via web UI on homelab (`/enroll`)
 
 ## Secrets
 

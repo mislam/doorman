@@ -9,12 +9,14 @@ services:
     environment:
       WORKER_HOST: "0.0.0.0"
       WORKER_PORT: "8768"
+      HOME: /app
+    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     ports:
       - "8768:8768"
     volumes:
       - ./config:/app/config
-      - hf_cache:/root/.cache
-      - insightface_models:/root/.insightface
+      - hf_cache:/app/.cache
+      - insightface_models:/app/.insightface
     deploy:
       resources:
         reservations:

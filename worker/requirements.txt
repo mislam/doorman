@@ -1,8 +1,9 @@
 # Core runtime (Mac venv + Docker base).
 # Dev:    requirements-dev.txt    → bun setup (pytest, ruff)
-# Vision: requirements-vision.txt → Docker / bun enroll (InsightFace, GPU)
+# Vision: requirements-vision.txt → Docker build only (InsightFace, GPU)
 pydantic-settings>=2.7.0
 requests>=2.32.0
 opencv-python-headless>=4.10.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
+python-multipart>=0.0.9

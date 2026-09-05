@@ -1,75 +1,88 @@
 # Face enrollment
 
-Recognition compares doorbell frames to photos on disk. **Add folders on Mac → `bun enroll` →
-done.**
+Recognition compares doorbell frames to photos on disk at `~/doorface/config/faces/{name}/` on
+homelab. Add and update faces through the **web UI** — deploy does not sync photos from Mac. The
+repo keeps `worker/config/faces/.gitkeep` only; real data lives on the server.
 
-Paths: `worker/config/faces/{name}/` on Mac · same tree on homelab after sync.
+## Web UI
 
-## Photos
-
-**Use both doorbell and iPhone** — the doorbell shows real distance and lighting; the phone is easy
-for extra angles.
-
-| Source   | When to use it                                      |
-| -------- | --------------------------------------------------- |
-| Doorbell | 2–3 shots with the person at the door (day is fine) |
-| iPhone   | 2–3 clear face shots (front, slight left/right)     |
-
-**~5 photos per person** is enough. Face visible, no sunglasses if you can avoid them. One person
-per photo.
-
-Folder name = the name in notifications (`alice`, `bob`, `jane`).
+On your phone or laptop (home Wi‑Fi), open:
 
 ```
-config/faces/
-  alice/
-    door-1.jpg
-    phone-1.jpg
-  jane/          # guest — same idea
-    phone-1.jpg
+http://homelab:8768/enroll
 ```
 
-## Enroll
+If `ENROLL_SECRET` is set in homelab `.env`, add `?token=YOUR_SECRET` to the URL once (saved in the
+browser session).
 
-From your Mac (after adding or changing photos):
+### Family (live capture)
+
+1. **Live capture** tab → enter name (`alice`)
+2. Person stands at the door — watch the live stream on your phone
+3. Follow the steps (front, left, right) and tap **Capture from stream** for each
+4. Tap **Enroll now** to rebuild `gallery.pkl`
+5. Optional: **Test recognize** — stand at the door and confirm your name appears
+
+Uses your doorbell camera (`STREAM_URL`) — not the phone camera.
+
+### Guests / neighbors (from footage)
+
+Consent-based live capture is for family only. For others, use doorbell recordings:
+
+1. **Reolink app** → find the clip → export/share video or stills
+2. **From footage** tab → upload the file
+3. Tap faces to select 2–3 clear crops → enter name → **Save selected**
+4. **Enroll now**
+
+When they stop visiting, delete them in the **Enrolled people** list.
+
+### Build the UI (Mac)
+
+From the repo root before deploy:
 
 ```bash
-bun enroll              # sync faces → homelab, build gallery.pkl there
-bun enroll -- -v        # verbose per-photo log
+bun run build:enroll
 ```
 
-`bun enroll` rsyncs `worker/config/faces/` to homelab and runs `enroll.py` in the Docker worker
-(GPU). Run `bun run deploy` once first so the image exists.
+`bun run deploy` runs this automatically. Output: `worker/static/enroll/`.
 
-`bun run deploy` also copies `config/faces/` (with the rest of `worker/`), but does **not** touch
-`gallery.pkl` on homelab — always run `bun enroll` after photo changes.
+---
 
-You should see: `Wrote N embedding(s) for M person(s) → config/gallery.pkl`
+## CLI fallback (Docker only)
 
-## Adding a guest
+If the UI is unavailable but photos already exist on homelab:
 
-Same flow as family — no separate system.
+```bash
+ssh homelab 'cd ~/doorface && docker compose exec worker python3.11 enroll.py -v'
+```
 
-1. **While they're visiting** — iPhone photo (or doorbell snapshot if they're at the door).
-2. **On Mac** — `mkdir worker/config/faces/jane` and drop in 1–3 photos. First name or nickname is
-   fine (`jane`, not `guest_jane`).
-3. **`bun enroll`** — sync + rebuild gallery.
-4. **Next ring** — they should show up by name.
+This rebuilds `gallery.pkl` from `config/faces/` — it does not copy photos from Mac.
 
-When they stop visiting, delete `worker/config/faces/jane/` on Mac, run `bun enroll` again.
+---
+
+## Workflows
+
+| Change                      | What to run                                                            |
+| --------------------------- | ---------------------------------------------------------------------- |
+| Code, Dockerfile, enroll UI | `bun run deploy`                                                       |
+| Add / update faces          | Web UI → **Enroll now**                                                |
+| Test recognition            | Web **Test recognize** or `curl -X POST http://homelab:8768/recognize` |
+
+Deploy rsyncs code only (`config/faces/` and `gallery.pkl` stay on homelab).
 
 ## If someone isn't recognized
 
-Add 2–3 more **doorbell** photos of that person at the door, then `bun enroll` again.
+Add 2–3 more **doorbell** captures in the web UI, then **Enroll now** again.
 
 ## Troubleshooting
 
-| Problem                | Fix                                                        |
-| ---------------------- | ---------------------------------------------------------- |
-| No faces enrolled      | Face not visible in photo — try clearer iPhone shot        |
-| `insightface` import   | Run `bun run deploy` to rebuild the Docker image           |
-| `python3.11` / Docker  | Run `bun run deploy` first; enroll uses Docker on homelab  |
-| `unknown flag: --gpus` | Pull latest scripts — enroll uses `docker run --gpus` now  |
-| SSH / rsync fails      | Check `DEPLOY_HOST` (default `homelab`) in `~/.ssh/config` |
+| Problem               | Fix                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Enroll page 401       | Add `?token=` matching `ENROLL_SECRET` in homelab `.env`                                                      |
+| Enroll page missing   | Run `bun run build:enroll` then `bun run deploy`                                                              |
+| No faces enrolled     | Face not visible in photo — try clearer shot                                                                  |
+| Doorbell stream blank | Check `STREAM_URL` / `STREAM_USER` / `STREAM_PASSWORD` in homelab `.env`                                      |
+| Permission errors     | Set `DOCKER_UID`/`DOCKER_GID` in homelab `.env`, run `./scripts/fix-homelab-config-perms.sh`, recreate worker |
+| Worker unhealthy      | `ssh homelab 'cd ~/doorface && docker compose logs worker --tail 30'`                                         |
 
-Env vars (`FACES_DIR`, `GALLERY_PATH`): [`worker/README.md`](../worker/README.md).
+Env vars: [`worker/README.md`](../worker/README.md).

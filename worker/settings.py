@@ -19,6 +19,14 @@ class Settings(BaseSettings):
 		default="",
 		validation_alias=AliasChoices("STREAM_URL", "RTSP_URL"),
 	)
+	stream_user: str = Field(
+		default="",
+		validation_alias=AliasChoices("STREAM_USER", "RTSP_USER"),
+	)
+	stream_password: str = Field(
+		default="",
+		validation_alias=AliasChoices("STREAM_PASSWORD", "RTSP_PASSWORD"),
+	)
 	ha_webhook_url: str = ""
 	faces_dir: str = "config/faces"
 	gallery_path: str = "config/gallery.pkl"
@@ -26,3 +34,10 @@ class Settings(BaseSettings):
 	frames_per_event: int = 5
 	worker_host: str = "127.0.0.1"
 	worker_port: int = 8768
+	enroll_secret: str = ""
+
+	def capture_stream_url(self) -> str:
+		"""Video URL for OpenCV — injects STREAM_USER/PASSWORD with runtime URL encoding."""
+		from stream import build_stream_url
+
+		return build_stream_url(self.stream_url, self.stream_user, self.stream_password)

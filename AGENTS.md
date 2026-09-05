@@ -2,7 +2,8 @@
 
 - **Language:** Python 3.11 in `worker/`
 - **Tooling:** bun (scripts), husky, prettier, ruff
-- **Rules:** `.cursor/rules/conventions.mdc`, `.cursor/rules/python-worker.mdc`
+- **Rules:** `.cursor/rules/conventions.mdc`, `.cursor/rules/python-worker.mdc`,
+  `.cursor/rules/homelab-docker.mdc`
 
 ## Cold start (new chat / fresh context)
 
@@ -17,10 +18,10 @@ Read in this order:
 **Resume phrase:** _"continue doorface"_ → start from `WORKLOG.md`, then implement the active phase
 only.
 
-**What exists:** RTSP grab (`stream.py`), `play_stream` smoke test, enrollment (`enroll.py`,
-`gallery.py`), deploy scaffold.
+**What exists:** RTSP grab, recognition (`/recognize`), enroll web UI (`/enroll`), `enroll.py`,
+`gallery.py`, deploy/status scripts.
 
-**What does not exist yet:** Recognition, `/recognize` HTTP, HA notify webhook, `/health`.
+**What does not exist yet:** HA webhook notify from worker.
 
 **Dev split:** Mac = edit + pytest + RTSP smoke test. Homelab = InsightFace + doorbell E2E. See spec
 Development environments.
@@ -42,8 +43,11 @@ Development environments.
 - Never read `.env` unless asked; use `.env.example`
 - One WORKLOG phase at a time
 - "Review staged" → `.cursor/rules/pre-commit-review.mdc`
+- **Homelab = Docker only** — no host Python/venv/apt/systemd for Doorface; see
+  `.cursor/rules/homelab-docker.mdc`
 
 ## Deploy
 
-`bun run deploy` rsyncs `worker/` to `~/doorface` on `homelab`, then rebuilds the Docker image.
-Secrets live only in `~/doorface/.env` on the server.
+`bun run deploy` rsyncs `worker/` to `~/doorface` on `homelab`, then `docker compose build/up`.
+Secrets live only in `~/doorface/.env` on the server. GPU work runs **inside the worker container**
+— never on the homelab host OS.

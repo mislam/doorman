@@ -1,0 +1,316 @@
+:root {
+	color-scheme: light dark;
+	font-family:
+		system-ui,
+		-apple-system,
+		"Segoe UI",
+		sans-serif;
+	line-height: 1.5;
+	--bg: #0f1419;
+	--surface: #1a2332;
+	--border: #2d3a4f;
+	--text: #e8edf5;
+	--muted: #9aa8bc;
+	--accent: #4f8cff;
+	--accent-hover: #3a78eb;
+	--ok: #3ecf8e;
+	--warn: #f0b429;
+	--danger: #f07178;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	min-height: 100vh;
+	background: var(--bg);
+	color: var(--text);
+}
+
+button,
+input {
+	font: inherit;
+}
+
+button {
+	cursor: pointer;
+	border: none;
+	border-radius: 10px;
+	padding: 0.65rem 1rem;
+	background: var(--accent);
+	color: white;
+}
+
+button:hover:not(:disabled) {
+	background: var(--accent-hover);
+}
+
+button:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+button.secondary {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	color: var(--text);
+}
+
+input {
+	width: 100%;
+	padding: 0.65rem 0.75rem;
+	border-radius: 10px;
+	border: 1px solid var(--border);
+	background: var(--surface);
+	color: var(--text);
+}
+
+.app {
+	max-width: 560px;
+	margin: 0 auto;
+	padding: 1rem 1rem 2rem;
+}
+
+header h1 {
+	margin: 0 0 0.25rem;
+	font-size: 1.4rem;
+}
+
+header p {
+	margin: 0 0 1rem;
+	color: var(--muted);
+	font-size: 0.95rem;
+}
+
+.tabs {
+	display: flex;
+	gap: 0.5rem;
+	margin-bottom: 1rem;
+}
+
+.tabs button {
+	flex: 1;
+}
+
+.tabs button.active {
+	outline: 2px solid var(--accent);
+}
+
+.card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 14px;
+	padding: 1rem;
+	margin-bottom: 1rem;
+}
+
+label {
+	display: block;
+	font-size: 0.85rem;
+	color: var(--muted);
+	margin-bottom: 0.35rem;
+}
+
+.steps {
+	display: flex;
+	gap: 0.35rem;
+	margin: 0.75rem 0 1rem;
+}
+
+.step {
+	flex: 1;
+	text-align: center;
+	font-size: 0.75rem;
+	padding: 0.35rem 0.2rem;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	color: var(--muted);
+}
+
+.step.active {
+	border-color: var(--accent);
+	color: var(--text);
+}
+
+.step.done {
+	border-color: var(--ok);
+	color: var(--ok);
+}
+
+.preview {
+	position: relative;
+	width: 100%;
+	aspect-ratio: 4 / 3;
+	background: #000;
+	border-radius: 12px;
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.preview img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.preview-loading {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 0;
+	padding: 0 1rem;
+	text-align: center;
+	color: var(--muted);
+	font-size: 0.9rem;
+	pointer-events: none;
+}
+
+.stream-preload {
+	position: absolute;
+	width: 0;
+	height: 0;
+	opacity: 0;
+	pointer-events: none;
+}
+
+.hint {
+	color: var(--muted);
+	font-size: 0.9rem;
+	margin: 0 0 0.75rem;
+}
+
+.people-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.empty {
+	color: var(--muted);
+	margin: 0.75rem 0 0;
+}
+
+.drop-zone {
+	position: relative;
+	display: block;
+	margin-top: 0.75rem;
+	border: 2px dashed var(--border);
+	border-radius: 12px;
+	padding: 1.5rem 1rem;
+	text-align: center;
+	color: var(--muted);
+	cursor: pointer;
+}
+
+.drop-zone input[type="file"] {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.actions {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}
+
+.actions button {
+	flex: 1;
+}
+
+.thumbs {
+	display: flex;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+	margin-top: 0.75rem;
+}
+
+.thumb {
+	width: 72px;
+	text-align: center;
+	font-size: 0.7rem;
+	color: var(--muted);
+}
+
+.thumb img {
+	width: 72px;
+	height: 72px;
+	object-fit: cover;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+}
+
+.message {
+	margin-top: 0.75rem;
+	padding: 0.65rem 0.75rem;
+	border-radius: 10px;
+	font-size: 0.9rem;
+}
+
+.message.ok {
+	background: color-mix(in srgb, var(--ok) 20%, transparent);
+	color: var(--ok);
+}
+
+.message.warn {
+	background: color-mix(in srgb, var(--warn) 20%, transparent);
+	color: var(--warn);
+}
+
+.message.error {
+	background: color-mix(in srgb, var(--danger) 20%, transparent);
+	color: var(--danger);
+}
+
+.face-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+	gap: 0.5rem;
+	margin-top: 0.75rem;
+}
+
+.face-grid button {
+	padding: 0;
+	background: transparent;
+	border: 2px solid var(--border);
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+.face-grid button.selected {
+	border-color: var(--accent);
+}
+
+.face-grid img {
+	display: block;
+	width: 100%;
+	aspect-ratio: 1;
+	object-fit: cover;
+}
+
+.people-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+}
+
+.people-list li {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 0.5rem 0;
+	border-bottom: 1px solid var(--border);
+}
+
+.people-list li:last-child {
+	border-bottom: none;
+}

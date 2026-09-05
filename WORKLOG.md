@@ -9,8 +9,7 @@ User inputs before face recognition work:
 - [x] Stream URL — in `worker/.env` (Reolink RTSP prod; ESP HTTP MJPEG dev)
 - [ ] HA doorbell trigger → POST worker `/recognize` (automation)
 - [ ] HA notify webhook URL — in `worker/.env`
-- [ ] Enrollment photos per family member → `worker/config/faces/{name}/`
-      ([guide](docs/enrollment.md))
+- [x] Enrollment photos per family member via web UI ([guide](docs/enrollment.md))
 
 ## Next — Phase 1
 

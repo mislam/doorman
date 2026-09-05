@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +13,7 @@ import numpy as np
 
 from gallery import Gallery, load_gallery
 from settings import Settings
-from stream import FrameSource
+from stream import FrameSource, preview_hub
 from vision_runtime import get_face_app
 
 if TYPE_CHECKING:
@@ -97,6 +98,21 @@ def recognize_frames(
 	return RecognitionResult(names=names, unknown=unknown, matches=matches)
 
 
+def _frames_from_preview_hub(count: int) -> list[NDArray[np.uint8]]:
+	"""Sample recent preview frames — avoids a second RTSP connection during enroll UI."""
+	if count < 1:
+		return []
+
+	frames: list[NDArray[np.uint8]] = []
+	for index in range(count):
+		frame = preview_hub.latest_frame()
+		if frame is not None:
+			frames.append(frame)
+		if index + 1 < count:
+			time.sleep(0.15)
+	return frames
+
+
 def recognize_from_settings(
 	settings: Settings,
 	*,
@@ -116,8 +132,13 @@ def recognize_from_settings(
 		gallery = load_gallery(gallery_path)
 
 	app = face_app if face_app is not None else get_face_app(gallery.model)
-	source = FrameSource(settings.stream_url)
-	frames = source.grab_event_frames(settings.frames_per_event)
+	frames = _frames_from_preview_hub(settings.frames_per_event)
+	if not frames:
+		source = FrameSource(settings.capture_stream_url())
+		try:
+			frames = source.grab_event_frames(settings.frames_per_event)
+		finally:
+			source.close()
 	if not frames:
 		logger.warning("No frames grabbed from stream")
 		return RecognitionResult(names=[], unknown=0, matches=[])
