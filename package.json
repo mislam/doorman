@@ -11,6 +11,7 @@
 		"test": "./scripts/ruff.sh test",
 		"start": "./scripts/run-worker.sh",
 		"play-stream": "./scripts/run-play-stream.sh",
+		"enroll": "./scripts/run-enroll.sh",
 		"setup": "./scripts/setup-venv.sh",
 		"deploy": "./scripts/deploy.sh",
 		"status": "./scripts/status.sh"

@@ -4,9 +4,9 @@ set -e
 # Ship worker/ to homelab and rebuild Docker.
 # Secrets on server only: ~/doorface/.env (see worker/.env.example)
 #
-# Usage: bun deploy
-# DEPLOY_HOST=homelab DEPLOY_DIR=doorface bun deploy
-# DEPLOY_SKIP_BUILD=1 bun deploy
+# Usage: bun run deploy
+# DEPLOY_HOST=homelab DEPLOY_DIR=doorface bun run deploy
+# DEPLOY_SKIP_BUILD=1 bun run deploy
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"

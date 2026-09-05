@@ -7,24 +7,26 @@ Self-hosted on the homelab GPU (RTX 3060). Learning project — small scope, dai
 
 ## Docs
 
-| Doc                                    | Purpose                               |
-| -------------------------------------- | ------------------------------------- |
-| [`docs/spec.md`](docs/spec.md)         | Product + technical spec              |
-| [`docs/homelab.md`](docs/homelab.md)   | Shared AI rig hardware and GPU budget |
-| [`worker/README.md`](worker/README.md) | Python modules, env, Docker           |
-| [`WORKLOG.md`](WORKLOG.md)             | Active implementation phase           |
+| Doc                                        | Purpose                               |
+| ------------------------------------------ | ------------------------------------- |
+| [`docs/spec.md`](docs/spec.md)             | Product + technical spec              |
+| [`docs/enrollment.md`](docs/enrollment.md) | Add family photos + build gallery     |
+| [`docs/homelab.md`](docs/homelab.md)       | Shared AI rig hardware and GPU budget |
+| [`worker/README.md`](worker/README.md)     | Python modules, env, Docker           |
+| [`WORKLOG.md`](WORKLOG.md)                 | Active implementation phase           |
 
 ## Commands
 
-| Command                     | What                                            |
-| --------------------------- | ----------------------------------------------- |
-| `bun setup`                 | Create `worker/.venv` and install dev deps      |
-| `bun lint` / `bun lint:fix` | Prettier + Ruff                                 |
-| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`) |
-| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)           |
-| `bun start`                 | Run `worker/main.py` (scaffold until Phase 1)   |
-| `bun deploy`                | Rsync `worker/` to homelab + Docker rebuild     |
-| `bun status`                | Homelab GPU + compose snapshot                  |
+| Command                     | What                                             |
+| --------------------------- | ------------------------------------------------ |
+| `bun setup`                 | Create `worker/.venv` and install dev deps       |
+| `bun lint` / `bun lint:fix` | Prettier + Ruff                                  |
+| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)  |
+| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)            |
+| `bun enroll`                | Build gallery.pkl from `config/faces/` (homelab) |
+| `bun start`                 | Run `worker/main.py` (scaffold until Phase 1)    |
+| `bun run deploy`            | Rsync `worker/` to homelab + Docker rebuild      |
+| `bun status`                | Homelab GPU + compose snapshot                   |
 
 Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorface`).
 
@@ -33,7 +35,7 @@ Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorface`).
 ```bash
 bun install
 bun setup
-cd worker && cp .env.example .env   # RTSP_URL for play-stream
+cd worker && cp .env.example .env   # STREAM_URL for play-stream
 bun play-stream -- -v             # verify doorbell stream
 bun run test
 ```

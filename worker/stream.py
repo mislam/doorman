@@ -1,5 +1,6 @@
-"""RTSP frame source — on-demand grab with reconnect backoff.
+"""Video frame source — on-demand grab with reconnect backoff.
 
+Supports RTSP, HTTP MJPEG, and other URLs OpenCV can open (e.g. ESP32 ``/stream``).
 For doorbell events use :meth:`FrameSource.grab_event_frames` (open → read N → close).
 :meth:`FrameSource.frames` is an infinite reconnect loop — tests and ad-hoc debugging only.
 """
@@ -22,17 +23,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_BACKOFF_SEC: tuple[float, ...] = (1.0, 2.0, 5.0, 10.0, 30.0)
-_RTSP_CREDENTIALS = re.compile(r"//[^@/]+@")
+_STREAM_CREDENTIALS = re.compile(r"//[^@/]+@")
 
 
-def mask_rtsp_url(url: str) -> str:
-	"""Hide credentials in RTSP URLs for log output."""
-	return _RTSP_CREDENTIALS.sub("//***@", url)
+def mask_stream_url(url: str) -> str:
+	"""Hide credentials in stream URLs for log output."""
+	return _STREAM_CREDENTIALS.sub("//***@", url)
 
 
 @dataclass
 class FrameSource:
-	"""Grab the newest frame from an RTSP stream; reconnect on failure."""
+	"""Grab the newest frame from a video stream; reconnect on failure."""
 
 	url: str
 	reconnect_backoff: tuple[float, ...] = DEFAULT_BACKOFF_SEC
@@ -40,7 +41,7 @@ class FrameSource:
 	_backoff_index: int = field(default=0, init=False, repr=False)
 
 	def open(self, *, max_attempts: int | None = None) -> None:
-		"""Open the RTSP stream, retrying with backoff until connected.
+		"""Open the stream, retrying with backoff until connected.
 
 		Args:
 			max_attempts: Stop after this many tries and raise ``ConnectionError``.
@@ -54,7 +55,7 @@ class FrameSource:
 			if cap.isOpened():
 				self._cap = cap
 				self._backoff_index = 0
-				logger.info("RTSP stream connected (%s)", mask_rtsp_url(self.url))
+				logger.info("Stream connected (%s)", mask_stream_url(self.url))
 				return
 			cap.release()
 			attempts += 1
@@ -62,13 +63,13 @@ class FrameSource:
 				break
 			delay = self._next_backoff_delay()
 			logger.warning(
-				"RTSP connect failed (%s), retrying in %.1fs",
-				mask_rtsp_url(self.url),
+				"Stream connect failed (%s), retrying in %.1fs",
+				mask_stream_url(self.url),
 				delay,
 			)
 			time.sleep(delay)
 
-		raise ConnectionError(f"Failed to open RTSP stream ({mask_rtsp_url(self.url)})")
+		raise ConnectionError(f"Failed to open stream ({mask_stream_url(self.url)})")
 
 	def close(self) -> None:
 		"""Release the underlying capture."""
@@ -124,8 +125,8 @@ class FrameSource:
 			frame = self.read_latest()
 			if frame is None:
 				logger.warning(
-					"RTSP read failed (%s), reconnecting in %.1fs",
-					mask_rtsp_url(self.url),
+					"Stream read failed (%s), reconnecting in %.1fs",
+					mask_stream_url(self.url),
 					self._peek_backoff_delay(),
 				)
 				self.close()

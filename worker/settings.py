@@ -1,5 +1,6 @@
 """Environment-backed configuration (worker/.env)."""
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 __version__ = "0.0.0"
@@ -14,7 +15,10 @@ class Settings(BaseSettings):
 		extra="ignore",
 	)
 
-	rtsp_url: str = ""
+	stream_url: str = Field(
+		default="",
+		validation_alias=AliasChoices("STREAM_URL", "RTSP_URL"),
+	)
 	ha_webhook_url: str = ""
 	faces_dir: str = "config/faces"
 	gallery_path: str = "config/gallery.pkl"

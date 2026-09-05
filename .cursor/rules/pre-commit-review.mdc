@@ -17,7 +17,7 @@ Read **git-staged** changes (`git status`, `git diff --cached`). Do **not** stag
 4. **Secrets** — no `.env`, RTSP URLs, or webhook tokens committed?
 5. **Tooling** — `bun lint` passes (or explain what's blocked, e.g. missing venv)
 6. **Docs** — owner doc updated if behavior changed?
-7. **Commit message** — suggest Conventional Commits header (≤ 90 chars) when ready
+7. **Commit message** — per `conventions.mdc` Commit messages
 
 ## Python-specific
 

@@ -1,4 +1,4 @@
-"""Quick RTSP smoke test — grab frames and print stats.
+"""Quick stream smoke test — grab frames and print stats.
 
 Usage (from repo root):
 
@@ -16,11 +16,11 @@ import time
 import cv2
 
 from settings import Settings
-from stream import FrameSource, mask_rtsp_url
+from stream import FrameSource, mask_stream_url
 
 
 def main() -> None:
-	parser = argparse.ArgumentParser(description="Smoke-test FrameSource against RTSP_URL")
+	parser = argparse.ArgumentParser(description="Smoke-test FrameSource against STREAM_URL")
 	parser.add_argument(
 		"--frames",
 		type=int,
@@ -51,14 +51,14 @@ def main() -> None:
 	)
 
 	settings = Settings()
-	if not settings.rtsp_url:
-		print("RTSP_URL is empty — set it in worker/.env", file=sys.stderr)
+	if not settings.stream_url:
+		print("STREAM_URL is empty — set it in worker/.env", file=sys.stderr)
 		raise SystemExit(1)
 
-	print(f"Stream: {mask_rtsp_url(settings.rtsp_url)}")
+	print(f"Stream: {mask_stream_url(settings.stream_url)}")
 	print(f"Grabbing {args.frames} frame(s)…\n")
 
-	source = FrameSource(url=settings.rtsp_url)
+	source = FrameSource(url=settings.stream_url)
 	start = time.perf_counter()
 	grabbed = source.grab_event_frames(args.frames)
 

@@ -6,10 +6,11 @@ Spec: [`docs/spec.md`](docs/spec.md)
 
 User inputs before face recognition work:
 
-- [x] Reolink RTSP URL — in `worker/.env` (smoke-tested with `bun play-stream`)
+- [x] Stream URL — in `worker/.env` (Reolink RTSP prod; ESP HTTP MJPEG dev)
 - [ ] HA doorbell trigger → POST worker `/recognize` (automation)
 - [ ] HA notify webhook URL — in `worker/.env`
 - [ ] Enrollment photos per family member → `worker/config/faces/{name}/`
+      ([guide](docs/enrollment.md))
 
 ## Next — Phase 1
 
@@ -18,7 +19,7 @@ User inputs before face recognition work:
 Suggested files: `enroll.py`, `recognize.py`, wire trigger stub in `main.py`.
 
 - [x] `stream.py` — RTSP grab on demand (reconnect backoff)
-- [ ] `enroll.py` — build gallery from `config/faces/`
+- [x] `enroll.py` — build gallery from `config/faces/`
 - [ ] `recognize.py` — InsightFace detect + match
 - [ ] `main.py` — HTTP `/recognize` or CLI for testing
 
@@ -35,5 +36,6 @@ Suggested files: `enroll.py`, `recognize.py`, wire trigger stub in `main.py`.
 
 | Date       | Item                                                                   |
 | ---------- | ---------------------------------------------------------------------- |
+| 2026-09-05 | `enroll.py` + `gallery.py` — enrollment gallery from `config/faces/`   |
 | 2026-09-05 | `stream.py` + `play_stream` RTSP smoke test                            |
 | 2026-09-04 | Phase 0: docs, flat worker modules, bun tooling, deploy/status scripts |

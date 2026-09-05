@@ -16,7 +16,7 @@ alwaysApply: true
 
 - Application code as flat modules in `worker/` (`main.py`, `settings.py`, …)
 - Spec: `docs/spec.md` · Progress: `WORKLOG.md`
-- Deploy: `bun deploy` → `homelab:~/doorface`
+- Deploy: `bun run deploy` → `homelab:~/doorface`
 - GPU inference on homelab; Mac uses `worker/config/faces/` for enrollment photos
 
 ## Secrets
@@ -28,10 +28,10 @@ alwaysApply: true
 
 When the user asks for a commit message, output **text only** — do not stage or commit.
 
-Use **Conventional Commits**: `type(scope): summary` — types: `feat`, `fix`, `chore`, `docs`, `ci`, `build`, `test`, `refactor`, `perf`
+**Conventional Commits:** `type(scope): summary` — imperative, lowercase after type, ≤ **90 chars** (commitlint). Types: `feat`, `fix`, `chore`, `docs`, `ci`, `build`, `test`, `refactor`, `perf`.
 
-- Header: imperative, lowercase after type, max **90 chars**
-- Must pass commitlint (`@commitlint/config-conventional`)
+- Trivial / one-file → **header only**
+- Multi-module or non-obvious *why* → header + blank line + `- ` bullets; don’t pad small commits
 
 ## Git
 

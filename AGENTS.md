@@ -12,28 +12,29 @@ Read in this order:
 2. [`docs/spec.md`](docs/spec.md) — product goal, stack (InsightFace), architecture, Mac vs homelab
 3. [`docs/homelab.md`](docs/homelab.md) — RTX 3060, VRAM budget, deploy path `~/doorface`
 4. [`worker/README.md`](worker/README.md) — env vars, flat module layout, homelab-only vision deps
-5. [`README.md`](README.md) — commands (`bun setup`, `bun run test`, `bun deploy`)
+5. [`README.md`](README.md) — commands (`bun setup`, `bun run test`, `bun run deploy`)
 
 **Resume phrase:** _"continue doorface"_ → start from `WORKLOG.md`, then implement the active phase
 only.
 
-**What exists:** RTSP grab (`stream.py`), `play_stream` smoke test, deploy scaffold.
+**What exists:** RTSP grab (`stream.py`), `play_stream` smoke test, enrollment (`enroll.py`,
+`gallery.py`), deploy scaffold.
 
-**What does not exist yet:** Face enrollment, recognition, `/recognize` HTTP, HA notify webhook,
-`/health`.
+**What does not exist yet:** Recognition, `/recognize` HTTP, HA notify webhook, `/health`.
 
 **Dev split:** Mac = edit + pytest + RTSP smoke test. Homelab = InsightFace + doorbell E2E. See spec
 Development environments.
 
 ### Context files
 
-| File                                   | When                      |
-| -------------------------------------- | ------------------------- |
-| [`WORKLOG.md`](WORKLOG.md)             | Active phase — start here |
-| [`docs/spec.md`](docs/spec.md)         | Product + technical spec  |
-| [`docs/homelab.md`](docs/homelab.md)   | GPU box, VRAM, network    |
-| [`worker/README.md`](worker/README.md) | Env vars, Docker          |
-| [`README.md`](README.md)               | Commands                  |
+| File                                       | When                      |
+| ------------------------------------------ | ------------------------- |
+| [`WORKLOG.md`](WORKLOG.md)                 | Active phase — start here |
+| [`docs/spec.md`](docs/spec.md)             | Product + technical spec  |
+| [`docs/homelab.md`](docs/homelab.md)       | GPU box, VRAM, network    |
+| [`docs/enrollment.md`](docs/enrollment.md) | Face gallery setup        |
+| [`worker/README.md`](worker/README.md)     | Env vars, Docker          |
+| [`README.md`](README.md)                   | Commands                  |
 
 ## Agent policy
 
@@ -44,5 +45,5 @@ Development environments.
 
 ## Deploy
 
-`bun deploy` rsyncs `worker/` to `~/doorface` on `homelab`, then rebuilds the Docker image. Secrets
-live only in `~/doorface/.env` on the server.
+`bun run deploy` rsyncs `worker/` to `~/doorface` on `homelab`, then rebuilds the Docker image.
+Secrets live only in `~/doorface/.env` on the server.

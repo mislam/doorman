@@ -106,15 +106,10 @@ demand** when the bell rings — not a 24/7 loop.
 
 ## Face enrollment
 
-Before recognition works:
+Step-by-step guide: [`docs/enrollment.md`](enrollment.md).
 
-1. Create `worker/config/faces/{name}/` for each family member (e.g. `alice/`, `bob/`)
-2. Add 3–10 clear face photos per person (varied angle/lighting, doorbell-like distance if possible)
-3. Run `enroll.py` (Phase 1) to build `config/gallery.pkl` or per-person embeddings cache
-4. Re-run enrollment when adding photos or new family members
-
-**Guests (post-v1):** same folder layout under `config/faces/guest_jane/`; document in WORKLOG
-backlog.
+Gallery layout: `worker/config/faces/{name}/` → enroll on homelab → `config/gallery.pkl`. Family and
+guests use the same folders; re-enroll after changes. See [`docs/enrollment.md`](enrollment.md).
 
 ## Home Assistant integration
 
@@ -158,13 +153,13 @@ Worker POST example: `{"event":"doorbell","names":["Alice","Bob"],"unknown":0,"t
 
 ## Phases
 
-| Phase             | Deliverable                                      | Where         |
-| ----------------- | ------------------------------------------------ | ------------- |
-| **0 — RTSP**      | `stream.py` + `play_stream` smoke test           | Mac + homelab |
-| **1 — Recognize** | Enroll gallery + detect/match on still or RTSP   | Homelab GPU   |
-| **2 — Integrate** | `/recognize` HTTP + HA webhook notify            | Homelab       |
-| **3 — Ship**      | Docker + `bun deploy` + `/health` + doorbell E2E | `~/doorface`  |
-| **4 — Tune**      | Thresholds, stream choice, FN/FP on real rings   | Ongoing       |
+| Phase             | Deliverable                                          | Where         |
+| ----------------- | ---------------------------------------------------- | ------------- |
+| **0 — RTSP**      | `stream.py` + `play_stream` smoke test               | Mac + homelab |
+| **1 — Recognize** | Enroll gallery + detect/match on still or RTSP       | Homelab GPU   |
+| **2 — Integrate** | `/recognize` HTTP + HA webhook notify                | Homelab       |
+| **3 — Ship**      | Docker + `bun run deploy` + `/health` + doorbell E2E | `~/doorface`  |
+| **4 — Tune**      | Thresholds, stream choice, FN/FP on real rings       | Ongoing       |
 
 ## Backlog (post-v1)
 
@@ -196,7 +191,7 @@ run on homelab.
 | -------- | ------------------------------------------------------------- |
 | Code     | Mac — `bun run test`, `bun lint`                              |
 | GPU test | Homelab — venv + `requirements-vision.txt`, curl `/recognize` |
-| Deploy   | `bun deploy` → rsync to `homelab:~/doorface`                  |
+| Deploy   | `bun run deploy` → rsync to `homelab:~/doorface`              |
 | Secrets  | `~/doorface/.env` only (RTSP, HA webhooks)                    |
 
 ## Acceptance criteria (v1)

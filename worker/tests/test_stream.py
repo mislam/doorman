@@ -6,12 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from stream import FrameSource, mask_rtsp_url
+from stream import FrameSource, mask_stream_url
 
 
-def test_mask_rtsp_url_hides_credentials() -> None:
+def test_mask_stream_url_hides_credentials() -> None:
 	url = "rtsp://admin:secret@doorbell.test:554/h264Preview_01_sub"
-	assert mask_rtsp_url(url) == "rtsp://***@doorbell.test:554/h264Preview_01_sub"
+	assert mask_stream_url(url) == "rtsp://***@doorbell.test:554/h264Preview_01_sub"
 
 
 def test_read_latest_returns_frame_on_success() -> None:

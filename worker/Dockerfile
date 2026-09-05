@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt requirements-vision.txt pyproject.toml ./
-COPY main.py settings.py stream.py ./
+COPY main.py settings.py stream.py gallery.py enroll.py ./
 COPY config/ ./config/
 
 # TODO Phase 1: pip install onnxruntime-gpu + insightface via requirements-vision.txt

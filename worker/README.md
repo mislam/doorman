@@ -9,6 +9,8 @@ Spec: [`../docs/spec.md`](../docs/spec.md) · Commands: [`../README.md`](../READ
 ```
 worker/
   main.py           entrypoint (HTTP server — Phase 1)
+  gallery.py        gallery pickle format + photo scan
+  enroll.py         build gallery.pkl from config/faces/
   stream.py         RTSP frame grab (on demand)
   settings.py       pydantic-settings ← .env
   play_stream.py    RTSP smoke test (bun play-stream)
@@ -43,7 +45,7 @@ cd worker && cp .env.example .env
 
 | Var                     | Default              | Role                                   |
 | ----------------------- | -------------------- | -------------------------------------- |
-| `RTSP_URL`              | —                    | Reolink stream                         |
+| `STREAM_URL`            | —                    | Video source (RTSP, HTTP MJPEG, …)     |
 | `HA_WEBHOOK_URL`        | —                    | HA notify webhook (secret in URL path) |
 | `FACES_DIR`             | `config/faces`       | Enrollment photos per person subfolder |
 | `GALLERY_PATH`          | `config/gallery.pkl` | Cached embeddings (gitignored)         |
@@ -55,7 +57,7 @@ cd worker && cp .env.example .env
 ## Homelab
 
 ```bash
-bun deploy
+bun run deploy
 cd ~/doorface && docker compose up -d
 ```
 
@@ -64,3 +66,7 @@ cd ~/doorface && docker compose up -d
 ```bash
 bun run test
 ```
+
+## Enrollment
+
+See [`../docs/enrollment.md`](../docs/enrollment.md).
