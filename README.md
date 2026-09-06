@@ -17,15 +17,15 @@ Self-hosted on the homelab GPU (RTX 3060). Learning project — small scope, dai
 
 ## Commands
 
-| Command                     | What                                                |
-| --------------------------- | --------------------------------------------------- |
-| `bun setup`                 | Create `worker/.venv` and install dev deps          |
-| `bun lint` / `bun lint:fix` | Prettier + Ruff                                     |
-| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)     |
-| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)               |
-| `bun run build:enroll`      | Build SvelteKit enroll UI → `worker/static/enroll/` |
-| `bun run deploy`            | Rsync code → homelab + Docker rebuild               |
-| `bun status`                | Homelab GPU + compose snapshot                      |
+| Command                     | What                                            |
+| --------------------------- | ----------------------------------------------- |
+| `bun setup`                 | Create `worker/.venv` and install dev deps      |
+| `bun lint` / `bun lint:fix` | Prettier + Ruff                                 |
+| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`) |
+| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)           |
+| `bun run build:web`         | Build SvelteKit UI → `worker/static/enroll/`    |
+| `bun run deploy`            | Rsync code → homelab + Docker rebuild           |
+| `bun status`                | Homelab GPU + compose snapshot                  |
 
 Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorface`). First Docker build
 can take 10–15 min (CUDA base + InsightFace). After `compose up`, deploy waits for `/health` (model
@@ -68,9 +68,9 @@ worker/          flat Python modules + Docker (deployed to ~/doorface)
   stream.py      RTSP frame grab (on demand)
   main.py
   settings.py
-  config/faces/  homelab runtime only — empty skeleton in repo (.gitkeep)
+  db/            homelab runtime only (manifest, photos, gallery.pkl — gitignored)
 scripts/
-enroll-ui/       SvelteKit enroll UI → worker/static/enroll/
+web/             SvelteKit UI → worker/static/enroll/ (served at /enroll)
 ```
 
 ## Status

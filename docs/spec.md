@@ -24,12 +24,12 @@ Keep the worker stateless per event: enroll faces from photos on disk; no databa
 
 ## Inputs
 
-| Input      | Detail                                                       |
-| ---------- | ------------------------------------------------------------ |
-| Trigger    | Doorbell press (HA automation → HTTP POST to worker)         |
-| Video      | Reolink doorbell **RTSP** (grab frames only when triggered)  |
-| Enrollment | Photos per person on homelab `config/faces/{name}/` (web UI) |
-| Config     | Env vars + face gallery on disk — no DB                      |
+| Input      | Detail                                                      |
+| ---------- | ----------------------------------------------------------- |
+| Trigger    | Doorbell press (HA automation → HTTP POST to worker)        |
+| Video      | Reolink doorbell **RTSP** (grab frames only when triggered) |
+| Enrollment | Web UI → homelab `db/manifest.json` + `db/photos/`          |
+| Config     | Env vars + face gallery on disk — no DB                     |
 
 **Open questions** (fill before implementation):
 
@@ -108,8 +108,8 @@ demand** when the bell rings — not a 24/7 loop.
 
 Step-by-step guide: [`docs/enrollment.md`](enrollment.md).
 
-Gallery layout: `config/faces/{name}/` on homelab → **Enroll now** in the web UI rebuilds
-`gallery.pkl`. See [`docs/enrollment.md`](enrollment.md).
+Gallery: `db/manifest.json` + `db/photos/` on homelab → **Enroll now** in the web UI rebuilds
+`db/gallery.pkl`. See [`docs/enrollment.md`](enrollment.md).
 
 ## Home Assistant integration
 

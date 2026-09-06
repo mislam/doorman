@@ -19,12 +19,14 @@ def test_recognize_endpoint_returns_payload() -> None:
 		patch("main.warmup_face_app"),
 		patch("main.preview_hub"),
 		patch("main.recognize_from_settings") as mock_recognize,
+		patch("main.notify_ha") as mock_notify,
 	):
 		mock_recognize.return_value = RecognitionResult(names=["alice"], unknown=0, matches=[])
 		client = TestClient(app)
 		response = client.post("/recognize")
 
 	assert response.status_code == 200
+	mock_notify.assert_called_once()
 	data = response.json()
 	assert data["event"] == "doorbell"
 	assert data["names"] == ["alice"]

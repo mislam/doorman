@@ -99,7 +99,7 @@
 		busyAction = "capture";
 		message = "";
 		try {
-			const person = name.trim().toLowerCase();
+			const person = name.trim();
 			const result = await captureFromStream(person, currentStep.id);
 			handleCaptureResult(result);
 			people = await listPeople();
@@ -162,13 +162,13 @@
 		}
 	}
 
-	async function removePerson(personName: string) {
-		if (!confirm(`Delete ${personName} and all their photos?`)) return;
+	async function removePerson(person: PersonInfo) {
+		if (!confirm(`Delete ${person.name} and all their photos?`)) return;
 		busyAction = "delete";
 		try {
-			await deletePerson(personName);
+			await deletePerson(person.id);
 			people = await listPeople();
-			showOk(`Deleted ${personName}`);
+			showOk(`Deleted ${person.name}`);
 		} catch (err) {
 			showError(err);
 		} finally {
@@ -207,7 +207,7 @@
 		try {
 			const result = await saveCrops(
 				scanSessionId,
-				name.trim().toLowerCase(),
+				name.trim(),
 				Array.from(selectedFaceIds),
 			);
 			showOk(result.message);
@@ -242,7 +242,7 @@
 	{#if tab === "live"}
 		<div class="card">
 			<label for="name">Person name</label>
-			<input id="name" bind:value={name} placeholder="alice" autocomplete="off" />
+			<input id="name" bind:value={name} placeholder="Reefat" autocomplete="off" />
 
 			<div class="steps">
 				{#each steps as step, index}
@@ -306,7 +306,7 @@
 	{:else}
 		<div class="card">
 			<label for="footage-name">Person name</label>
-			<input id="footage-name" bind:value={name} placeholder="jane" autocomplete="off" />
+			<input id="footage-name" bind:value={name} placeholder="Jane" autocomplete="off" />
 
 			<label class="drop-zone">
 				<input type="file" accept="image/*,video/*" onchange={onFileChange} />
@@ -379,7 +379,7 @@
 				{#each people as person}
 					<li>
 						<span>{person.name} <small>({person.photos.length})</small></span>
-						<button class="secondary" onclick={() => removePerson(person.name)}>Delete</button>
+						<button class="secondary" onclick={() => removePerson(person)}>Delete</button>
 					</li>
 				{/each}
 			</ul>

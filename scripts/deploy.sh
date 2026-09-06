@@ -20,19 +20,45 @@ HEALTH_WAIT_SECS=900
 HEALTH_POLL_SECS=10
 
 echo "Syncing worker/ to $HOST:~/$REMOTE_DIR..."
-if [ -d "$ROOT_DIR/enroll-ui" ]; then
-	echo "Building enroll UI..."
-	(cd "$ROOT_DIR" && bun run build:enroll)
-fi
 
 "$SCRIPT_DIR/fix-homelab-config-perms.sh" || true
+
+if [ -d "$ROOT_DIR/web" ]; then
+	ENROLL_OUT="$ROOT_DIR/worker/static/enroll/index.html"
+	ENROLL_STAMP="$ROOT_DIR/worker/static/enroll/.build-stamp"
+	need_build=0
+	if [ ! -f "$ENROLL_OUT" ] || [ ! -f "$ENROLL_STAMP" ]; then
+		need_build=1
+	else
+		for path in \
+			"$ROOT_DIR/web/package.json" \
+			"$ROOT_DIR/web/bun.lock" \
+			"$ROOT_DIR/web/svelte.config.js" \
+			"$ROOT_DIR/web/vite.config.ts" \
+			"$ROOT_DIR/web/tsconfig.json"; do
+			if [ -f "$path" ] && [ "$path" -nt "$ENROLL_STAMP" ]; then
+				need_build=1
+				break
+			fi
+		done
+		if [ "$need_build" = "0" ] && find "$ROOT_DIR/web/src" -type f -newer "$ENROLL_STAMP" -print -quit 2>/dev/null | grep -q .; then
+			need_build=1
+		fi
+	fi
+	if [ "$need_build" = "1" ]; then
+		echo "Building web UI..."
+		(cd "$ROOT_DIR" && bun run build:web)
+		mkdir -p "$(dirname "$ENROLL_STAMP")"
+		touch "$ENROLL_STAMP"
+	else
+		echo "Web UI unchanged — skipping build"
+	fi
+fi
 
 rsync -az --delete \
 	--exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ruff_cache \
 	--exclude .env --exclude .DS_Store \
-	--exclude config/gallery.pkl \
-	--exclude config/faces/ \
-	--exclude config/enroll_sessions/ \
+	--exclude db/ \
 	worker/ "$HOST:~/$REMOTE_DIR/"
 
 if [ "${DEPLOY_SKIP_BUILD:-}" = "1" ]; then
@@ -49,18 +75,6 @@ ssh "$HOST" "
 			exit 1
 		fi
 		cp .env.example .env
-		uid=\$(id -u)
-		gid=\$(id -g)
-		if grep -q '^DOCKER_UID=' .env; then
-			sed -i \"s/^DOCKER_UID=.*/DOCKER_UID=\$uid/\" .env
-		else
-			printf '\nDOCKER_UID=%s\n' \"\$uid\" >> .env
-		fi
-		if grep -q '^DOCKER_GID=' .env; then
-			sed -i \"s/^DOCKER_GID=.*/DOCKER_GID=\$gid/\" .env
-		else
-			printf 'DOCKER_GID=%s\n' \"\$gid\" >> .env
-		fi
 		echo 'Created ~/$REMOTE_DIR/.env from .env.example'
 		echo '  → edit STREAM_URL, STREAM_USER/PASSWORD, HA_WEBHOOK_URL on homelab before prod use'
 	fi
@@ -85,11 +99,11 @@ fi
 ssh "$HOST" "docker image prune -f >/dev/null 2>&1 || true"
 
 if [ "${DEPLOY_SKIP_HEALTH:-}" = "1" ]; then
-	echo "Deployed to $HOST:~/$REMOTE_DIR (DEPLOY_SKIP_HEALTH=1 — check /health yourself)"
+	echo "Synced to $HOST (~/$REMOTE_DIR). Skipped health check (DEPLOY_SKIP_HEALTH=1)."
 	exit 0
 fi
 
-echo "Waiting for /health (InsightFace warmup — often 1–3 min, up to ${HEALTH_WAIT_SECS}s)..."
+echo "Starting worker on $HOST — loading face models (usually 1–3 min, first start can take longer)..."
 
 ssh "$HOST" "
 	set -e
@@ -99,21 +113,21 @@ ssh "$HOST" "
 	while [ \$SECONDS -lt \$deadline ]; do
 		if curl -sf http://127.0.0.1:8768/health >/dev/null 2>&1; then
 			elapsed=\$((SECONDS - start))
-			echo \"  healthy after \${elapsed}s\"
+			echo \"  Worker is up (took \${elapsed}s)\"
 			exit 0
 		fi
 		if docker compose ps worker 2>/dev/null | grep -q Restarting; then
-			echo '  worker is crash-looping — recent logs:'
+			echo '  Worker keeps crashing. Recent logs:'
 			docker compose logs worker --tail 40
 			exit 1
 		fi
 		elapsed=\$((SECONDS - start))
-		echo \"  still starting (\${elapsed}s)...\"
+		echo \"  Still loading… (\${elapsed}s)\"
 		sleep $HEALTH_POLL_SECS
 	done
-	echo 'timed out waiting for /health'
+	echo 'Timed out — worker never became healthy. Recent logs:'
 	docker compose logs worker --tail 40
 	exit 1
 "
 
-echo "Deployed to $HOST:~/$REMOTE_DIR (healthy)"
+echo "Done! Doorface is running on $HOST (~/$REMOTE_DIR)."

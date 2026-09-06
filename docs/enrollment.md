@@ -1,8 +1,7 @@
 # Face enrollment
 
-Recognition compares doorbell frames to photos on disk at `~/doorface/config/faces/{name}/` on
-homelab. Add and update faces through the **web UI** — deploy does not sync photos from Mac. The
-repo keeps `worker/config/faces/.gitkeep` only; real data lives on the server.
+Recognition uses enrollment data on homelab at `~/doorface/db/` (`manifest.json`, `photos/`,
+`gallery.pkl`). Add and update faces through the **web UI** — deploy does not sync `db/` from Mac.
 
 ## Web UI
 
@@ -41,7 +40,7 @@ When they stop visiting, delete them in the **Enrolled people** list.
 From the repo root before deploy:
 
 ```bash
-bun run build:enroll
+bun run build:web
 ```
 
 `bun run deploy` runs this automatically. Output: `worker/static/enroll/`.
@@ -56,7 +55,8 @@ If the UI is unavailable but photos already exist on homelab:
 ssh homelab 'cd ~/doorface && docker compose exec worker python3.11 enroll.py -v'
 ```
 
-This rebuilds `gallery.pkl` from `config/faces/` — it does not copy photos from Mac.
+This rebuilds `gallery.pkl` from `db/manifest.json` and `db/photos/` — it does not copy data from
+Mac.
 
 ---
 
@@ -68,7 +68,7 @@ This rebuilds `gallery.pkl` from `config/faces/` — it does not copy photos fro
 | Add / update faces          | Web UI → **Enroll now**                                                |
 | Test recognition            | Web **Test recognize** or `curl -X POST http://homelab:8768/recognize` |
 
-Deploy rsyncs code only (`config/faces/` and `gallery.pkl` stay on homelab).
+Deploy rsyncs code only (`db/` stays on homelab).
 
 ## If someone isn't recognized
 
@@ -76,13 +76,13 @@ Add 2–3 more **doorbell** captures in the web UI, then **Enroll now** again.
 
 ## Troubleshooting
 
-| Problem               | Fix                                                                                                           |
-| --------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Enroll page 401       | Add `?token=` matching `ENROLL_SECRET` in homelab `.env`                                                      |
-| Enroll page missing   | Run `bun run build:enroll` then `bun run deploy`                                                              |
-| No faces enrolled     | Face not visible in photo — try clearer shot                                                                  |
-| Doorbell stream blank | Check `STREAM_URL` / `STREAM_USER` / `STREAM_PASSWORD` in homelab `.env`                                      |
-| Permission errors     | Set `DOCKER_UID`/`DOCKER_GID` in homelab `.env`, run `./scripts/fix-homelab-config-perms.sh`, recreate worker |
-| Worker unhealthy      | `ssh homelab 'cd ~/doorface && docker compose logs worker --tail 30'`                                         |
+| Problem               | Fix                                                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Enroll page 401       | Add `?token=` matching `ENROLL_SECRET` in homelab `.env`                                                                         |
+| Enroll page missing   | Run `bun run build:web` then `bun run deploy`                                                                                    |
+| No faces enrolled     | Face not visible in photo — try clearer shot                                                                                     |
+| Doorbell stream blank | Check `STREAM_URL` / `STREAM_USER` / `STREAM_PASSWORD` in homelab `.env`                                                         |
+| Permission errors     | If `id -u` ≠ 1000, set `DOCKER_UID`/`DOCKER_GID` in homelab `.env`; run `./scripts/fix-homelab-config-perms.sh`, recreate worker |
+| Worker unhealthy      | `ssh homelab 'cd ~/doorface && docker compose logs worker --tail 30'`                                                            |
 
 Env vars: [`worker/README.md`](../worker/README.md).

@@ -2,25 +2,21 @@
 
 Spec: [`docs/spec.md`](docs/spec.md)
 
-## Active — Phase 1 prep
+## Active — Phase 2 integrate
 
-User inputs before face recognition work:
-
-- [x] Stream URL — in `worker/.env` (Reolink RTSP prod; ESP HTTP MJPEG dev)
-- [ ] HA doorbell trigger → POST worker `/recognize` (automation)
+- [ ] HA doorbell trigger → POST worker `/recognize` (automation — user config)
 - [ ] HA notify webhook URL — in `worker/.env`
-- [x] Enrollment photos per family member via web UI ([guide](docs/enrollment.md))
+- [x] Worker POSTs recognition JSON to `HA_WEBHOOK_URL` after `/recognize`
 
-## Next — Phase 1
+## Done — Phase 1
 
-**Goal:** Enroll family faces from photos; detect + match on RTSP grab; stdout log (no HA yet).
-
-Suggested files: `enroll.py`, `recognize.py`, wire trigger stub in `main.py`.
+**Goal:** Enroll family faces from photos; detect + match on RTSP grab; stdout log.
 
 - [x] `stream.py` — RTSP grab on demand (reconnect backoff)
-- [x] `enroll.py` — build gallery from `config/faces/`
+- [x] `enroll.py` — build gallery from `db/manifest.json` + `db/photos/`
 - [x] `recognize.py` — InsightFace detect + match
 - [x] `main.py` — HTTP `/recognize` or CLI for testing
+- [x] Web enroll UI (`/enroll`)
 
 ## Backlog
 
@@ -33,8 +29,10 @@ Suggested files: `enroll.py`, `recognize.py`, wire trigger stub in `main.py`.
 
 ## Done
 
-| Date       | Item                                                                   |
-| ---------- | ---------------------------------------------------------------------- |
-| 2026-09-05 | `enroll.py` + `gallery.py` — enrollment gallery from `config/faces/`   |
-| 2026-09-05 | `stream.py` + `play_stream` RTSP smoke test                            |
-| 2026-09-04 | Phase 0: docs, flat worker modules, bun tooling, deploy/status scripts |
+| Date       | Item                                                                    |
+| ---------- | ----------------------------------------------------------------------- |
+| 2026-09-05 | `face_store.py` — `db/manifest.json` + UUID photos; `enroll-ui` → `web` |
+| 2026-09-05 | `notify.py` — POST recognition payload to HA webhook after `/recognize` |
+| 2026-09-05 | `enroll.py` + `gallery.py` — enrollment gallery from photos on disk     |
+| 2026-09-05 | `stream.py` + `play_stream` RTSP smoke test                             |
+| 2026-09-04 | Phase 0: docs, flat worker modules, bun tooling, deploy/status scripts  |

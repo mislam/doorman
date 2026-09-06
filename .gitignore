@@ -1,9 +1,8 @@
 node_modules
-enroll-ui/node_modules/
-enroll-ui/.svelte-kit/
-worker/static/enroll/**
-!worker/static/enroll/index.html
-worker/config/enroll_sessions/
+web/node_modules/
+web/.svelte-kit/
+worker/static/enroll/
+worker/db/
 
 # OS
 .DS_Store
@@ -25,14 +24,6 @@ worker/*.egg-info/
 worker/dist/
 worker/build/
 worker/.cache/
-
-# Calibration / enrollment (gitignored media)
-worker/config/gallery.pkl
-worker/config/faces/**/*.jpg
-worker/config/faces/**/*.jpeg
-worker/config/faces/**/*.png
-worker/config/*.jpg
-worker/config/*.png
 
 # Editor
 .eslintcache

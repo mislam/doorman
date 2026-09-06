@@ -28,8 +28,8 @@ alwaysApply: false
 
 ## Face gallery
 
-- Enrollment photos: `worker/config/faces/{name}/*.jpg` (gitignored)
-- Cached embeddings: `config/gallery.pkl` (gitignored; built by `enroll.py`)
+- Enrollment: `db/manifest.json` + `db/photos/*.jpg` (display names in manifest, UUID filenames)
+- Cached embeddings: `db/gallery.pkl` (gitignored; built by **Enroll now**)
 - Recognition threshold via `RECOGNITION_THRESHOLD` env
 
 ## Deploy

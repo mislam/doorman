@@ -10,17 +10,17 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 from fastapi.testclient import TestClient
 
+from face_store import load_store, photos_dir
 from main import create_app
 from settings import Settings
 
 
 def _settings(tmp_path: Path, **overrides: object) -> Settings:
-	faces = tmp_path / "faces"
-	faces.mkdir()
+	db = tmp_path / "db"
+	db.mkdir()
 	return Settings(
 		_env_file=None,
-		faces_dir=str(faces),
-		gallery_path=str(tmp_path / "gallery.pkl"),
+		db_dir=str(db),
 		enroll_secret="test-secret",
 		stream_url="rtsp://cam/stream",
 		**overrides,
@@ -52,6 +52,7 @@ def test_enroll_requires_token(tmp_path: Path) -> None:
 def test_capture_photo_saves_face(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
+	db_dir = settings.db_path()
 	image = np.zeros((80, 80, 3), dtype=np.uint8)
 	_, encoded = __import__("cv2").imencode(".jpg", image)
 
@@ -73,8 +74,38 @@ def test_capture_photo_saves_face(tmp_path: Path) -> None:
 	assert response.status_code == 200
 	data = response.json()
 	assert data["ok"] is True
-	assert data["filename"] == "front.jpg"
-	assert (tmp_path / "faces" / "alice" / "front.jpg").is_file()
+	assert data["filename"] == "front"
+	store = load_store(db_dir)
+	assert len(store.people) == 1
+	assert store.people[0].name == "alice"
+	assert len(list(photos_dir(db_dir).glob("*.jpg"))) == 1
+
+
+def test_capture_preserves_display_name_with_special_chars(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	db_dir = settings.db_path()
+	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+
+	mock_app = MagicMock()
+	mock_app.get.return_value = [SimpleNamespace(det_score=0.99)]
+
+	with (
+		patch("main.warmup_face_app"),
+		patch("enroll_web.get_face_app", return_value=mock_app),
+		patch("enroll_web._decode_image", return_value=image),
+	):
+		response = client.post(
+			"/enroll/api/capture",
+			headers=_auth_headers(),
+			data={"name": "Reefat O'Brien", "label": "front"},
+			files={"image": ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
+		)
+
+	assert response.status_code == 200
+	store = load_store(db_dir)
+	assert store.people[0].name == "Reefat O'Brien"
 
 
 def test_capture_rejects_no_face(tmp_path: Path) -> None:
@@ -104,9 +135,17 @@ def test_capture_rejects_no_face(tmp_path: Path) -> None:
 
 def test_rebuild_gallery(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
-	alice = tmp_path / "faces" / "alice"
-	alice.mkdir()
-	(alice / "one.jpg").write_bytes(b"x")
+	db_dir = settings.db_path()
+	store = load_store(db_dir)
+	from face_store import PersonRecord, register_photo, save_store
+
+	person = PersonRecord(id="person-1", name="alice", photos=[])
+	photo_path = photos_dir(db_dir) / "photo-1.jpg"
+	photos_dir(db_dir).mkdir(parents=True, exist_ok=True)
+	photo_path.write_bytes(b"x")
+	register_photo(person, "one", photo_path)
+	store.people.append(person)
+	save_store(store, db_dir)
 
 	embedding = np.array([1.0, 0.0], dtype=np.float32)
 	mock_app = MagicMock()
@@ -125,21 +164,31 @@ def test_rebuild_gallery(tmp_path: Path) -> None:
 	data = response.json()
 	assert data["embeddings"] == 1
 	assert data["people"] == 1
-	assert (tmp_path / "gallery.pkl").is_file()
+	assert settings.gallery_path().is_file()
 
 
 def test_delete_person(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
-	alice = tmp_path / "faces" / "alice"
-	alice.mkdir()
-	(alice / "one.jpg").write_bytes(b"x")
+	db_dir = settings.db_path()
+	store = load_store(db_dir)
+	from face_store import PersonRecord, register_photo, save_store
+
+	person = PersonRecord(id="person-1", name="alice", photos=[])
+	photo_path = photos_dir(db_dir) / "photo-1.jpg"
+	photos_dir(db_dir).mkdir(parents=True, exist_ok=True)
+	photo_path.write_bytes(b"x")
+	register_photo(person, "one", photo_path)
+	store.people.append(person)
+	save_store(store, db_dir)
 	client = _client(settings)
 
 	with patch("main.warmup_face_app"):
-		response = client.delete("/enroll/api/people/alice", headers=_auth_headers())
+		response = client.delete("/enroll/api/people/person-1", headers=_auth_headers())
 
 	assert response.status_code == 200
-	assert not alice.exists()
+	reloaded = load_store(db_dir)
+	assert reloaded.people == []
+	assert not photo_path.exists()
 
 
 def test_snapshot_returns_jpeg(tmp_path: Path) -> None:

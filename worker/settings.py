@@ -1,5 +1,7 @@
 """Environment-backed configuration (worker/.env)."""
 
+from pathlib import Path
+
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,13 +30,21 @@ class Settings(BaseSettings):
 		validation_alias=AliasChoices("STREAM_PASSWORD", "RTSP_PASSWORD"),
 	)
 	ha_webhook_url: str = ""
-	faces_dir: str = "config/faces"
-	gallery_path: str = "config/gallery.pkl"
+	db_dir: str = "db"
 	recognition_threshold: float = 0.4
 	frames_per_event: int = 5
 	worker_host: str = "127.0.0.1"
 	worker_port: int = 8768
 	enroll_secret: str = ""
+
+	def db_path(self) -> Path:
+		return Path(self.db_dir)
+
+	def gallery_path(self) -> Path:
+		return self.db_path() / "gallery.pkl"
+
+	def sessions_path(self) -> Path:
+		return self.db_path() / "sessions"
 
 	def capture_stream_url(self) -> str:
 		"""Video URL for OpenCV — injects STREAM_USER/PASSWORD with runtime URL encoding."""

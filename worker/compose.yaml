@@ -14,7 +14,7 @@ services:
     ports:
       - "8768:8768"
     volumes:
-      - ./config:/app/config
+      - ./db:/app/db
       - hf_cache:/app/.cache
       - insightface_models:/app/.insightface
     deploy:

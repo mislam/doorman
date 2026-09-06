@@ -6,7 +6,6 @@ import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -124,7 +123,7 @@ def recognize_from_settings(
 		msg = "STREAM_URL is not set"
 		raise ValueError(msg)
 
-	gallery_path = Path(settings.gallery_path)
+	gallery_path = settings.gallery_path()
 	if gallery is None:
 		if not gallery_path.is_file():
 			msg = f"Gallery not found: {gallery_path} (run enroll first)"
@@ -162,7 +161,7 @@ def result_to_payload(result: RecognitionResult) -> dict[str, object]:
 
 
 def log_result(result: RecognitionResult) -> None:
-	"""Log recognition output (Phase 1 — stdout only, no HA notify yet)."""
+	"""Log recognition output for a doorbell event."""
 	if result.names:
 		logger.info("Recognized: %s (%d unknown)", ", ".join(result.names), result.unknown)
 	elif result.unknown:

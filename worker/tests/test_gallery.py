@@ -8,27 +8,48 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from face_store import PersonRecord, load_store, photos_dir, register_photo, save_store
 from gallery import EnrolledFace, Gallery, iter_enrollment_photos, load_gallery, save_gallery
 
 
-def test_iter_enrollment_photos_skips_hidden_and_non_images(tmp_path: Path) -> None:
-	alice = tmp_path / "alice"
-	alice.mkdir()
-	(alice / "front.jpg").write_bytes(b"jpg")
-	(alice / "side.png").write_bytes(b"png")
-	(alice / "notes.txt").write_text("skip")
-	(tmp_path / ".hidden").mkdir()
-	(tmp_path / ".hidden" / "secret.jpg").write_bytes(b"jpg")
+def _person_with_photos(
+	db_dir: Path,
+	*,
+	person_id: str,
+	name: str,
+	files: list[tuple[str, str]],
+) -> None:
+	store = load_store(db_dir)
+	person = PersonRecord(id=person_id, name=name, photos=[])
+	photo_root = photos_dir(db_dir)
+	photo_root.mkdir(parents=True, exist_ok=True)
+	for file_id, label in files:
+		path = photo_root / f"{file_id}.jpg"
+		path.write_bytes(b"jpg")
+		register_photo(person, label, path)
+	store.people.append(person)
+	save_store(store, db_dir)
 
-	bob = tmp_path / "bob"
-	bob.mkdir()
-	(bob / "one.jpeg").write_bytes(b"jpeg")
 
-	assert list(iter_enrollment_photos(tmp_path)) == [
-		("alice", alice / "front.jpg"),
-		("alice", alice / "side.png"),
-		("bob", bob / "one.jpeg"),
-	]
+def test_iter_enrollment_photos_reads_manifest(tmp_path: Path) -> None:
+	db_dir = tmp_path / "db"
+	_person_with_photos(
+		db_dir,
+		person_id="alice-id",
+		name="alice",
+		files=[("front", "front"), ("side", "side")],
+	)
+	_person_with_photos(
+		db_dir,
+		person_id="bob-id",
+		name="bob",
+		files=[("one", "one")],
+	)
+
+	found = list(iter_enrollment_photos(db_dir))
+	assert len(found) == 3
+	assert {name for name, _ in found} == {"alice", "bob"}
+	assert all(path.parent == photos_dir(db_dir) for _, path in found)
 
 
 def test_iter_enrollment_photos_empty_when_missing(tmp_path: Path) -> None:
@@ -42,7 +63,7 @@ def test_gallery_pickle_roundtrip(tmp_path: Path) -> None:
 			EnrolledFace(
 				name="alice",
 				embedding=np.array([1.0, 0.0], dtype=np.float32),
-				photo="alice/front.jpg",
+				photo="photos/front.jpg",
 			),
 		],
 	)

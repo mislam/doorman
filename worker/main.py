@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from enroll_web import router as enroll_router
+from notify import notify_ha
 from recognize import log_result, recognize_from_settings, result_to_payload
 from settings import Settings, __version__
 from stream import preview_hub
@@ -64,7 +65,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 			raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 		log_result(result)
-		return result_to_payload(result)
+		payload = result_to_payload(result)
+		notify_ha(settings.ha_webhook_url, payload)
+		return payload
 
 	app.include_router(enroll_router)
 
@@ -72,10 +75,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 		app.mount(
 			"/enroll",
 			StaticFiles(directory=ENROLL_STATIC_DIR, html=True),
-			name="enroll-ui",
+			name="web",
 		)
 	else:
-		logger.warning("Enroll UI not built — run: bun run build:enroll")
+		logger.warning("Enroll UI not built — run: bun run build:web")
 
 	return app
 
@@ -109,7 +112,9 @@ def main() -> None:
 			raise SystemExit(1) from exc
 
 		log_result(result)
-		print(json.dumps(result_to_payload(result)))
+		payload = result_to_payload(result)
+		notify_ha(settings.ha_webhook_url, payload)
+		print(json.dumps(payload))
 		return
 
 	app = create_app(settings)

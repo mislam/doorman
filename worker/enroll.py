@@ -43,23 +43,23 @@ def embed_photo(app: Any, photo_path: Path) -> NDArray[np.float32] | None:
 
 
 def build_gallery(
-	faces_dir: Path,
+	db_dir: Path,
 	*,
 	model: str = DEFAULT_MODEL,
 	face_app: Any | None = None,
 ) -> Gallery:
-	"""Scan *faces_dir* and embed each enrollment photo."""
+	"""Scan *db_dir* manifest + photos and embed each enrollment photo."""
 	app = face_app if face_app is not None else create_face_app(model)
 	gallery = Gallery(model=model)
-	faces_root = faces_dir.resolve()
+	db_root = db_dir.resolve()
 
-	for name, photo in iter_enrollment_photos(faces_dir):
+	for name, photo in iter_enrollment_photos(db_dir):
 		embedding = embed_photo(app, photo)
 		if embedding is None:
 			continue
 
 		try:
-			photo_ref = str(photo.resolve().relative_to(faces_root))
+			photo_ref = str(photo.resolve().relative_to(db_root))
 		except ValueError:
 			photo_ref = str(photo)
 
@@ -70,7 +70,7 @@ def build_gallery(
 
 
 def main() -> None:
-	parser = argparse.ArgumentParser(description="Build config/gallery.pkl from enrollment photos")
+	parser = argparse.ArgumentParser(description="Build db/gallery.pkl from enrollment photos")
 	parser.add_argument(
 		"-v",
 		"--verbose",
@@ -86,17 +86,17 @@ def main() -> None:
 
 	log_inference_providers()
 	settings = Settings()
-	faces_dir = Path(settings.faces_dir)
-	gallery_path = Path(settings.gallery_path)
+	db_dir = settings.db_path()
+	gallery_path = settings.gallery_path()
 
-	if not faces_dir.is_dir():
-		print(f"Faces directory not found: {faces_dir}", file=sys.stderr)
-		print(f"Create subfolders like {faces_dir}/alice/ with .jpg photos.", file=sys.stderr)
+	if not db_dir.is_dir():
+		print(f"Database directory not found: {db_dir}", file=sys.stderr)
+		print("Enroll faces via the web UI first.", file=sys.stderr)
 		raise SystemExit(1)
 
-	gallery = build_gallery(faces_dir)
+	gallery = build_gallery(db_dir)
 	if not gallery.faces:
-		print(f"No faces enrolled from {faces_dir}", file=sys.stderr)
+		print(f"No faces enrolled in {db_dir}", file=sys.stderr)
 		raise SystemExit(1)
 
 	save_gallery(gallery, gallery_path)

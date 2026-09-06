@@ -37,7 +37,7 @@ async function parseError(response: Response): Promise<string> {
 	return response.statusText || "Request failed"
 }
 
-export type PersonInfo = { name: string; photos: string[] }
+export type PersonInfo = { id: string; name: string; photos: string[] }
 
 export type CaptureResult = {
 	ok: boolean
@@ -75,8 +75,8 @@ export async function listPeople(): Promise<PersonInfo[]> {
 	return response.json()
 }
 
-export async function deletePerson(name: string): Promise<void> {
-	const response = await fetch(apiUrl(`/api/people/${encodeURIComponent(name)}`), {
+export async function deletePerson(personId: string): Promise<void> {
+	const response = await fetch(apiUrl(`/api/people/${encodeURIComponent(personId)}`), {
 		method: "DELETE",
 		headers: authHeaders(),
 	})

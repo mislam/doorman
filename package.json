@@ -11,7 +11,7 @@
 		"test": "./scripts/ruff.sh test",
 		"start": "./scripts/run-worker.sh",
 		"play-stream": "./scripts/run-play-stream.sh",
-		"build:enroll": "cd enroll-ui && bun install && bun run build",
+		"build:web": "cd web && bun install && bun run build",
 		"setup": "./scripts/setup-venv.sh",
 		"deploy": "./scripts/deploy.sh",
 		"status": "./scripts/status.sh"

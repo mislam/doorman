@@ -12,8 +12,7 @@ host-level app setup outside that boundary.
 Secrets in `~/doorface/.env` only (never rsync'd; created from `.env.example` on first deploy).
 Host installs **platform only** (NVIDIA driver, Docker, Container Toolkit) — not app Python.
 
-**Bind-mounted `config/`:** use `DOCKER_UID` / `DOCKER_GID` in `.env` so web enroll writes faces
-and gallery with permissions the container user can write. Fix old root-owned files via
+**Bind-mounted `db/`:** compose runs as UID/GID 1000 by default. Fix root-owned files via
 `scripts/fix-homelab-config-perms.sh` (container `chown`, not host `sudo`).
 
 ## Do

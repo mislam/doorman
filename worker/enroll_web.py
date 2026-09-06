@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import re
 import shutil
 import time
 import uuid
@@ -20,7 +19,21 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from enroll import build_gallery
-from gallery import save_gallery
+from face_store import (
+	PersonRecord,
+	PhotoRecord,
+	add_photo_from_file,
+	find_or_create_person,
+	load_store,
+	new_photo_path,
+	register_photo,
+	save_store,
+	validate_display_name,
+)
+from face_store import (
+	delete_person as delete_stored_person,
+)
+from gallery import save_gallery as save_gallery_pickle
 from settings import Settings
 from stream import FrameSource, mask_stream_url, preview_hub
 from vision_runtime import get_face_app
@@ -30,7 +43,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 CAPTURE_LABELS = frozenset({"front", "left", "right", "door"})
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png"})
 VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".mkv", ".avi", ".webm"})
@@ -61,6 +73,7 @@ class RebuildResponse(BaseModel):
 
 
 class PersonInfo(BaseModel):
+	id: str
 	name: str
 	photos: list[str]
 
@@ -101,12 +114,29 @@ def _get_settings(request: Request) -> Settings:
 	return settings
 
 
-def _sanitize_name(name: str) -> str:
-	clean = name.strip().lower()
-	if not NAME_RE.match(clean):
-		msg = "Name must be 1–32 chars: lowercase letters, digits, _ or -"
-		raise HTTPException(status_code=400, detail=msg)
-	return clean
+def _validate_display_name(name: str) -> str:
+	try:
+		return validate_display_name(name)
+	except ValueError as exc:
+		raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _save_capture_photo(
+	settings: Settings,
+	display_name: str,
+	capture_label: str,
+	frame: NDArray[np.uint8],
+) -> PhotoRecord:
+	faces_dir = _db_dir(settings)
+	store = load_store(faces_dir)
+	person = find_or_create_person(store, display_name)
+	_, photo_path = new_photo_path(faces_dir)
+	photo_path.parent.mkdir(parents=True, exist_ok=True)
+	if not cv2.imwrite(str(photo_path), frame):
+		raise HTTPException(status_code=500, detail="Failed to save photo")
+	record = register_photo(person, capture_label, photo_path)
+	save_store(store, faces_dir)
+	return record
 
 
 def _verify_enroll_access(
@@ -127,8 +157,8 @@ def _verify_enroll_access(
 	raise HTTPException(status_code=401, detail="Invalid or missing enroll token")
 
 
-def _faces_dir(settings: Settings) -> Path:
-	return Path(settings.faces_dir)
+def _db_dir(settings: Settings) -> Path:
+	return settings.db_path()
 
 
 def _decode_image(data: bytes) -> NDArray[np.uint8]:
@@ -169,16 +199,15 @@ def _thumbnail_base64(image: NDArray[np.uint8], max_size: int = 160) -> str:
 	return f"data:image/jpeg;base64,{data}"
 
 
-def _next_photo_path(person_dir: Path, label: str) -> Path:
-	person_dir.mkdir(parents=True, exist_ok=True)
-	candidate = person_dir / f"{label}.jpg"
-	if not candidate.exists():
-		return candidate
-	for index in range(2, 100):
-		candidate = person_dir / f"{label}-{index}.jpg"
-		if not candidate.exists():
-			return candidate
-	msg = f"Too many photos for label {label}"
+def _next_footage_label(person: PersonRecord) -> str:
+	footage_labels = [photo.label for photo in person.photos if photo.label.startswith("footage")]
+	if not footage_labels:
+		return "footage-1"
+	for index in range(1, 100):
+		label = f"footage-{index}"
+		if label not in footage_labels:
+			return label
+	msg = "Too many footage photos"
 	raise HTTPException(status_code=400, detail=msg)
 
 
@@ -196,8 +225,8 @@ def _cleanup_scan_sessions() -> None:
 				path.unlink(missing_ok=True)
 
 
-def _scan_session_dir(session_id: str) -> Path:
-	root = Path("config/enroll_sessions") / session_id
+def _scan_session_dir(settings: Settings, session_id: str) -> Path:
+	root = settings.sessions_path() / session_id
 	root.mkdir(parents=True, exist_ok=True)
 	return root
 
@@ -303,34 +332,31 @@ def _mjpeg_frames(settings: Settings) -> Iterator[bytes]:
 
 @router.get("/api/people", dependencies=[Depends(_verify_enroll_access)])
 def list_people(settings: Annotated[Settings, Depends(_get_settings)]) -> list[PersonInfo]:
-	faces_dir = _faces_dir(settings)
-	if not faces_dir.is_dir():
-		return []
-
-	people: list[PersonInfo] = []
-	for person_dir in sorted(faces_dir.iterdir()):
-		if not person_dir.is_dir() or person_dir.name.startswith("."):
-			continue
-		photos = sorted(
-			path.name
-			for path in person_dir.iterdir()
-			if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+	faces_dir = _db_dir(settings)
+	store = load_store(faces_dir)
+	return [
+		PersonInfo(
+			id=person.id,
+			name=person.name,
+			photos=[photo.label for photo in person.photos],
 		)
-		people.append(PersonInfo(name=person_dir.name, photos=photos))
-	return people
+		for person in sorted(store.people, key=lambda entry: entry.name.lower())
+	]
 
 
-@router.delete("/api/people/{name}", dependencies=[Depends(_verify_enroll_access)])
+@router.delete("/api/people/{person_id}", dependencies=[Depends(_verify_enroll_access)])
 def delete_person(
-	name: str,
+	person_id: str,
 	settings: Annotated[Settings, Depends(_get_settings)],
 ) -> dict[str, str]:
-	person_name = _sanitize_name(name)
-	person_dir = _faces_dir(settings) / person_name
-	if not person_dir.is_dir():
-		raise HTTPException(status_code=404, detail="Person not found")
-	shutil.rmtree(person_dir)
-	return {"message": f"Deleted {person_name}"}
+	faces_dir = _db_dir(settings)
+	store = load_store(faces_dir)
+	try:
+		person = delete_stored_person(store, faces_dir, person_id)
+	except KeyError as exc:
+		raise HTTPException(status_code=404, detail="Person not found") from exc
+	save_store(store, faces_dir)
+	return {"message": f"Deleted {person.name}"}
 
 
 @router.post("/api/capture", dependencies=[Depends(_verify_enroll_access)])
@@ -340,7 +366,7 @@ async def capture_photo(
 	label: Annotated[str, Form()],
 	image: Annotated[UploadFile, File()],
 ) -> CaptureResponse:
-	person_name = _sanitize_name(name)
+	display_name = _validate_display_name(name)
 	capture_label = label.strip().lower()
 	if capture_label not in CAPTURE_LABELS:
 		raise HTTPException(
@@ -371,15 +397,12 @@ async def capture_photo(
 			message=f"{count} faces detected — one person per photo",
 		)
 
-	person_dir = _faces_dir(settings) / person_name
-	photo_path = _next_photo_path(person_dir, capture_label)
-	if not cv2.imwrite(str(photo_path), frame):
-		raise HTTPException(status_code=500, detail="Failed to save photo")
+	record = _save_capture_photo(settings, display_name, capture_label, frame)
 
 	return CaptureResponse(
 		ok=True,
 		label=capture_label,
-		filename=photo_path.name,
+		filename=record.label,
 		face_count=1,
 		message="Saved",
 	)
@@ -394,7 +417,7 @@ def capture_doorbell(
 	if not settings.stream_url:
 		raise HTTPException(status_code=503, detail="STREAM_URL is not configured")
 
-	person_name = _sanitize_name(name)
+	display_name = _validate_display_name(name)
 	capture_label = label.strip().lower()
 	if capture_label not in CAPTURE_LABELS:
 		raise HTTPException(
@@ -435,15 +458,12 @@ def capture_doorbell(
 			message="Need exactly one face at the door — adjust position and retry",
 		)
 
-	person_dir = _faces_dir(settings) / person_name
-	photo_path = _next_photo_path(person_dir, capture_label)
-	if not cv2.imwrite(str(photo_path), best_frame):
-		raise HTTPException(status_code=500, detail="Failed to save photo")
+	record = _save_capture_photo(settings, display_name, capture_label, best_frame)
 
 	return CaptureResponse(
 		ok=True,
 		label=capture_label,
-		filename=photo_path.name,
+		filename=record.label,
 		face_count=1,
 		message="Saved doorbell frame",
 	)
@@ -498,7 +518,7 @@ async def scan_footage(
 		raise HTTPException(status_code=400, detail="Empty upload")
 
 	session_id = uuid.uuid4().hex
-	session_dir = _scan_session_dir(session_id)
+	session_dir = _scan_session_dir(settings, session_id)
 	upload_path = session_dir / f"upload{suffix}"
 	upload_path.write_bytes(data)
 
@@ -529,45 +549,47 @@ def save_crops(
 	if session is None:
 		raise HTTPException(status_code=404, detail="Scan session expired — upload again")
 
-	person_name = _sanitize_name(body.name)
+	display_name = _validate_display_name(body.name)
 	if not body.face_ids:
 		raise HTTPException(status_code=400, detail="Select at least one face")
 
-	person_dir = _faces_dir(settings) / person_name
-	person_dir.mkdir(parents=True, exist_ok=True)
+	faces_dir = _db_dir(settings)
+	store = load_store(faces_dir)
+	person = find_or_create_person(store, display_name)
 	saved: list[str] = []
 
-	for index, face_id in enumerate(body.face_ids, start=1):
+	for face_id in body.face_ids:
 		crop_path = session.crops.get(face_id)
 		if crop_path is None or not crop_path.is_file():
 			continue
-		dest = person_dir / f"footage-{index}.jpg"
-		if dest.exists():
-			dest = _next_photo_path(person_dir, "footage")
-		shutil.copy2(crop_path, dest)
-		saved.append(dest.name)
+		label = _next_footage_label(person)
+		record = add_photo_from_file(
+			store,
+			faces_dir,
+			person=person,
+			label=label,
+			source=crop_path,
+		)
+		saved.append(record.label)
 
 	if not saved:
 		raise HTTPException(status_code=400, detail="No valid face selections")
 
+	save_store(store, faces_dir)
 	return SaveCropsResponse(
 		saved=saved,
-		message=f"Saved {len(saved)} photo(s) for {person_name}",
+		message=f"Saved {len(saved)} photo(s) for {display_name}",
 	)
 
 
 @router.post("/api/rebuild", dependencies=[Depends(_verify_enroll_access)])
 def rebuild_gallery(settings: Annotated[Settings, Depends(_get_settings)]) -> RebuildResponse:
-	faces_dir = _faces_dir(settings)
-	if not faces_dir.is_dir():
-		raise HTTPException(status_code=404, detail=f"Faces directory not found: {faces_dir}")
-
-	gallery = build_gallery(faces_dir)
+	db_dir = _db_dir(settings)
+	gallery = build_gallery(db_dir)
 	if not gallery.faces:
 		raise HTTPException(status_code=422, detail="No faces enrolled")
 
-	gallery_path = Path(settings.gallery_path)
-	save_gallery(gallery, gallery_path)
+	save_gallery_pickle(gallery, settings.gallery_path())
 	people = sorted({face.name for face in gallery.faces})
 	message = f"Wrote {len(gallery.faces)} embedding(s) for {len(people)} person(s)"
 	logger.info(message)

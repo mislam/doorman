@@ -1,4 +1,4 @@
-"""Face gallery — enrollment photos on disk, cached embeddings in a pickle."""
+"""Face gallery — cached embeddings built from enrollment photos on disk."""
 
 from __future__ import annotations
 
@@ -8,13 +8,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from face_store import iter_enrollment_photos as iter_stored_photos
+
 if TYPE_CHECKING:
 	import numpy as np
 	from numpy.typing import NDArray
 
 GALLERY_VERSION = 1
 DEFAULT_MODEL = "buffalo_l"
-PHOTO_SUFFIXES = frozenset({".jpg", ".jpeg", ".png"})
 
 
 @dataclass
@@ -28,26 +29,16 @@ class EnrolledFace:
 
 @dataclass
 class Gallery:
-	"""Cached embeddings built from ``config/faces/{name}/`` photos."""
+	"""Cached embeddings built from ``db/manifest.json`` + ``db/photos/``."""
 
 	version: int = GALLERY_VERSION
 	model: str = DEFAULT_MODEL
 	faces: list[EnrolledFace] = field(default_factory=list)
 
 
-def iter_enrollment_photos(faces_dir: Path) -> Iterator[tuple[str, Path]]:
-	"""Yield ``(person_name, photo_path)`` for each image under ``faces_dir/{name}/``."""
-	if not faces_dir.is_dir():
-		return
-
-	for person_dir in sorted(faces_dir.iterdir()):
-		if not person_dir.is_dir() or person_dir.name.startswith("."):
-			continue
-
-		name = person_dir.name
-		for photo in sorted(person_dir.iterdir()):
-			if photo.is_file() and photo.suffix.lower() in PHOTO_SUFFIXES:
-				yield name, photo
+def iter_enrollment_photos(db_dir: Path) -> Iterator[tuple[str, Path]]:
+	"""Yield ``(display_name, photo_path)`` for each enrolled photo."""
+	yield from iter_stored_photos(db_dir)
 
 
 def save_gallery(gallery: Gallery, path: Path) -> None:

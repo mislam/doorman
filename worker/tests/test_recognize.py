@@ -98,7 +98,9 @@ def test_recognize_frames_no_faces() -> None:
 
 
 def test_recognize_from_settings_grabs_frames(tmp_path) -> None:
-	gallery_path = tmp_path / "gallery.pkl"
+	db_dir = tmp_path / "db"
+	db_dir.mkdir()
+	gallery_path = db_dir / "gallery.pkl"
 	gallery = Gallery(
 		faces=[EnrolledFace(name="alice", embedding=np.array([1.0, 0.0]), photo="a.jpg")],
 	)
@@ -113,7 +115,7 @@ def test_recognize_from_settings_grabs_frames(tmp_path) -> None:
 	settings = Settings(
 		_env_file=None,
 		stream_url="rtsp://cam/stream",
-		gallery_path=str(gallery_path),
+		db_dir=str(db_dir),
 	)
 
 	with (
@@ -129,7 +131,9 @@ def test_recognize_from_settings_grabs_frames(tmp_path) -> None:
 
 
 def test_recognize_from_settings_uses_preview_hub(tmp_path) -> None:
-	gallery_path = tmp_path / "gallery.pkl"
+	db_dir = tmp_path / "db"
+	db_dir.mkdir()
+	gallery_path = db_dir / "gallery.pkl"
 	gallery = Gallery(
 		faces=[EnrolledFace(name="alice", embedding=np.array([1.0, 0.0]), photo="a.jpg")],
 	)
@@ -144,7 +148,7 @@ def test_recognize_from_settings_uses_preview_hub(tmp_path) -> None:
 	settings = Settings(
 		_env_file=None,
 		stream_url="rtsp://cam/stream",
-		gallery_path=str(gallery_path),
+		db_dir=str(db_dir),
 		frames_per_event=2,
 	)
 

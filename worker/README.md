@@ -10,15 +10,16 @@ Spec: [`../docs/spec.md`](../docs/spec.md) · Commands: [`../README.md`](../READ
 worker/
   main.py           entrypoint (HTTP /recognize, --once CLI)
   recognize.py      detect + match against gallery
+  notify.py         POST results to HA webhook
   gallery.py        gallery pickle format + photo scan
-  enroll.py         build gallery.pkl from config/faces/
+  face_store.py     manifest.json + UUID photos under db/
+  enroll.py         build db/gallery.pkl from manifest + photos
   enroll_web.py     web enroll API + doorbell MJPEG (/enroll)
   stream.py         RTSP frame grab (on demand)
   settings.py       pydantic-settings ← .env
   play_stream.py    RTSP smoke test (bun play-stream)
   tests/
-  config/
-    faces/        enrollment photos on homelab (gitignored; .gitkeep in repo)
+  db/               homelab runtime only (manifest, photos, gallery.pkl)
   pyproject.toml
   requirements.txt
   requirements-vision.txt   InsightFace stack (homelab / Docker)
@@ -58,20 +59,22 @@ cd worker && cp .env.example .env
 
 ## Env (`worker/.env`)
 
-| Var                     | Default              | Role                                                |
-| ----------------------- | -------------------- | --------------------------------------------------- |
-| `STREAM_URL`            | —                    | Video host/path (no credentials for RTSP)           |
-| `STREAM_USER`           | —                    | RTSP username (plain text; encoded at runtime)      |
-| `STREAM_PASSWORD`       | —                    | RTSP password (plain text; encoded at runtime)      |
-| `HA_WEBHOOK_URL`        | —                    | HA notify webhook (secret in URL path)              |
-| `FACES_DIR`             | `config/faces`       | Enrollment photos per person subfolder              |
-| `GALLERY_PATH`          | `config/gallery.pkl` | Cached embeddings (gitignored)                      |
-| `RECOGNITION_THRESHOLD` | `0.4`                | Match score cutoff (tune on homelab)                |
-| `FRAMES_PER_EVENT`      | `5`                  | RTSP frames to grab per doorbell ring               |
-| `WORKER_HOST`           | `127.0.0.1`          | HTTP bind (`0.0.0.0` in Docker)                     |
-| `WORKER_PORT`           | `8768`               | HTTP port (`/recognize`, `/health`, `/enroll`)      |
-| `ENROLL_SECRET`         | —                    | Optional token for `/enroll/*` (LAN only)           |
-| `DOCKER_UID` / `GID`    | `1000`               | Container user — match `id -u` / `id -g` on homelab |
+| Var                     | Default     | Role                                                                 |
+| ----------------------- | ----------- | -------------------------------------------------------------------- |
+| `STREAM_URL`            | —           | Video host/path (no credentials for RTSP)                            |
+| `STREAM_USER`           | —           | RTSP username (plain text; encoded at runtime)                       |
+| `STREAM_PASSWORD`       | —           | RTSP password (plain text; encoded at runtime)                       |
+| `HA_WEBHOOK_URL`        | —           | HA notify webhook (secret in URL path)                               |
+| `DB_DIR`                | `db`        | Enrollment data (`manifest.json`, `photos/`, `gallery.pkl`)          |
+| `RECOGNITION_THRESHOLD` | `0.4`       | Match score cutoff (tune on homelab)                                 |
+| `FRAMES_PER_EVENT`      | `5`         | RTSP frames to grab per doorbell ring                                |
+| `WORKER_HOST`           | `127.0.0.1` | HTTP bind (`0.0.0.0` in Docker)                                      |
+| `WORKER_PORT`           | `8768`      | HTTP port (`/recognize`, `/health`, `/enroll`)                       |
+| `ENROLL_SECRET`         | — (open)    | Optional — set in homelab `.env` to require `?token=` on `/enroll/*` |
+
+Compose runs the worker as UID/GID `1000` by default (`compose.yaml`). If homelab `id -u` is not
+`1000` and enroll hits permission errors, add `DOCKER_UID` / `DOCKER_GID` to homelab `.env` and run
+`./scripts/fix-homelab-config-perms.sh`.
 
 ## Homelab
 
@@ -97,5 +100,5 @@ bun run test
 
 ## Enrollment
 
-Web UI: `http://homelab:8768/enroll` (build with `bun run build:enroll`). See
+Web UI: `http://homelab:8768/enroll` (build with `bun run build:web`). See
 [`../docs/enrollment.md`](../docs/enrollment.md).
