@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 	ha_webhook_url: str = ""
 	db_dir: str = "db"
 	recognition_threshold: float = 0.4
+	frame_enhance: str = "clahe"
 	frames_per_event: int = 5
 	worker_host: str = "127.0.0.1"
 	worker_port: int = 8768

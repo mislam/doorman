@@ -7,8 +7,14 @@ description = "Doorman worker — doorbell face recognition and HA notify"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "-m 'not integration and not preprocessing'"
+markers = [
+	"integration: doorbell recognition regression on real fixtures (homelab Docker via bun run test:integration)",
+	"preprocessing: CLAHE vs raw comparison on doorbell fixtures (homelab Docker via bun run test:integration)",
+]
 filterwarnings = [
 	"ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning:starlette.testclient",
+	"ignore:`estimate` is deprecated:FutureWarning:insightface.utils.face_align",
 ]
 
 [tool.ruff]

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from frame_enhance import detect_faces
 from gallery import Gallery, load_gallery
 from settings import Settings
 from stream import FrameSource, preview_hub
@@ -62,13 +63,15 @@ def _match_detected_face(face: Any, gallery: Gallery, threshold: float) -> FaceM
 def _pick_best_frame(
 	face_app: Any,
 	frames: list[NDArray[np.uint8]],
+	*,
+	enhance_mode: str,
 ) -> list[Any] | None:
 	"""Return detections from the frame with the most (and highest-scoring) faces."""
 	best_faces: list[Any] | None = None
 	best_key = (-1, -1.0)
 
 	for frame in frames:
-		faces = face_app.get(frame)
+		faces = detect_faces(face_app, frame, enhance_mode=enhance_mode)
 		if not faces:
 			continue
 		key = (len(faces), sum(float(face.det_score) for face in faces))
@@ -85,9 +88,10 @@ def recognize_frames(
 	*,
 	face_app: Any,
 	threshold: float,
+	enhance_mode: str = "clahe",
 ) -> RecognitionResult:
 	"""Detect and match faces in the best frame from *frames*."""
-	faces = _pick_best_frame(face_app, frames)
+	faces = _pick_best_frame(face_app, frames, enhance_mode=enhance_mode)
 	if not faces:
 		return RecognitionResult(names=[], unknown=0, matches=[])
 
@@ -147,6 +151,7 @@ def recognize_from_settings(
 		gallery,
 		face_app=app,
 		threshold=settings.recognition_threshold,
+		enhance_mode=settings.frame_enhance,
 	)
 
 

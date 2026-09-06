@@ -17,15 +17,17 @@ Self-hosted on the homelab GPU (RTX 3060). Learning project — small scope, dai
 
 ## Commands
 
-| Command                     | What                                                 |
-| --------------------------- | ---------------------------------------------------- |
-| `bun setup`                 | Create `worker/.venv` and install dev deps           |
-| `bun lint` / `bun lint:fix` | Prettier + Ruff                                      |
-| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)      |
-| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)                |
-| `bun run build:web`         | Build SvelteKit UI → `worker/static/enroll/`         |
-| `bun run deploy`            | Rsync code → homelab + Docker rebuild                |
-| `bun status`                | Homelab Docker compose + GPU snapshot (in container) |
+| Command                     | What                                                   |
+| --------------------------- | ------------------------------------------------------ |
+| `bun setup`                 | Create `worker/.venv` and install dev deps             |
+| `bun lint` / `bun lint:fix` | Prettier + Ruff                                        |
+| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)        |
+| `bun run convert:fixtures`  | PNG → JPEG for doorbell test images (Mac)              |
+| `bun run test:integration`  | Doorbell fixture tests on homelab Docker (InsightFace) |
+| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)                  |
+| `bun run build:web`         | Build SvelteKit UI → `worker/static/enroll/`           |
+| `bun run deploy`            | Rsync code → homelab + Docker rebuild                  |
+| `bun status`                | Homelab Docker compose + GPU snapshot (in container)   |
 
 Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorman`). First Docker build
 can take 10–15 min (CUDA base + InsightFace). After `compose up`, deploy waits for the container
@@ -52,11 +54,12 @@ bun run deploy                      # code / UI changes
 curl -X POST http://192.168.x.x:8768/recognize   # test recognition
 ```
 
-| What                      | Mac | Homelab              |
-| ------------------------- | --- | -------------------- |
-| pytest, lint, RTSP smoke  | ✓   | —                    |
-| Enroll faces (web UI)     | ✓   | ✓ (photos on server) |
-| InsightFace / recognition | —   | ✓ Docker             |
+| What                      | Mac | Homelab                |
+| ------------------------- | --- | ---------------------- |
+| pytest, lint, RTSP smoke  | ✓   | —                      |
+| Doorbell fixture tests    | —   | ✓ (`test:integration`) |
+| Enroll faces (web UI)     | ✓   | ✓ (photos on server)   |
+| InsightFace / recognition | —   | ✓ Docker               |
 
 You don't run recognition locally on Mac — pytest mocks InsightFace. Deploy when **code** changes;
 use the **enroll UI** when **faces** change.

@@ -10,6 +10,7 @@ Spec: [`../docs/spec.md`](../docs/spec.md) · Commands: [`../README.md`](../READ
 worker/
   main.py           entrypoint (HTTP /recognize, --once CLI)
   recognize.py      detect + match against gallery
+  frame_enhance.py  CLAHE pre-detect shadow lift
   notify.py         POST results to HA webhook
   gallery.py        gallery pickle format + photo scan
   face_store.py     manifest.json + UUID photos under db/
@@ -67,6 +68,7 @@ cd worker && cp .env.example .env
 | `HA_WEBHOOK_URL`        | —           | HA notify webhook (secret in URL path)                               |
 | `DB_DIR`                | `db`        | Enrollment data (`manifest.json`, `photos/`, `gallery.pkl`)          |
 | `RECOGNITION_THRESHOLD` | `0.4`       | Match score cutoff (tune on homelab)                                 |
+| `FRAME_ENHANCE`         | `clahe`     | Pre-detect shadow lift: `clahe` or `off`                             |
 | `FRAMES_PER_EVENT`      | `5`         | RTSP frames to grab per doorbell ring                                |
 | `WORKER_HOST`           | `127.0.0.1` | HTTP bind (`0.0.0.0` in Docker)                                      |
 | `WORKER_PORT`           | `8768`      | HTTP port (`/recognize`, `/health`, `/enroll`)                       |
@@ -102,8 +104,14 @@ ssh homelab 'cd ~/doorman && docker compose exec worker python enroll.py -v'
 ## Tests
 
 ```bash
-bun run test
+bun run test                  # Mac: unit tests (InsightFace mocked)
+bun run convert:fixtures      # PNG → JPEG for fixture captures
+bun run test:integration      # Homelab Docker: doorbell footage fixtures
 ```
+
+Fixture layout: `tests/fixtures/doorbell/` — see README there. Large JPEGs are gitignored; rsync
+deploys them to homelab for integration runs. The image rebuilds automatically when Dockerfile or
+requirements change.
 
 ## Enrollment
 

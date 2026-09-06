@@ -27,12 +27,13 @@ COPY requirements.txt requirements-vision.txt pyproject.toml ./
 RUN python3.11 -m pip install --upgrade pip \
 	&& python3.11 -m pip install -r requirements.txt \
 	&& python3.11 -m pip install "onnxruntime-gpu[cuda,cudnn]>=1.19.0,<1.27" \
-	&& python3.11 -m pip install "onnx>=1.14.0" tqdm scipy scikit-image \
+	&& python3.11 -m pip install "onnx>=1.14.0" tqdm scipy scikit-image pytest \
 	&& python3.11 -m pip install --no-deps "insightface==1.0.1" \
 	&& python3.11 -c "import onnxruntime as ort; ort.preload_dlls(cuda=True, cudnn=True); providers=ort.get_available_providers(); assert 'CUDAExecutionProvider' in providers, providers" \
 	&& python3.11 -c "from insightface.app import FaceAnalysis"
 
-COPY main.py settings.py stream.py gallery.py face_store.py enroll.py enroll_web.py recognize.py notify.py vision_runtime.py ./
+COPY main.py settings.py stream.py gallery.py face_store.py enroll.py enroll_web.py recognize.py notify.py vision_runtime.py frame_enhance.py ./
+COPY tests/ ./tests/
 COPY static/enroll/ ./static/enroll/
 # Runtime data (faces, gallery.pkl) comes from the compose bind mount — not the image.
 RUN ln -sf /usr/bin/python3.11 /usr/local/bin/python \

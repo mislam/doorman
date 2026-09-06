@@ -81,7 +81,7 @@ def test_recognize_frames_picks_frame_with_most_faces() -> None:
 		[],
 	]
 
-	result = recognize_frames(frames, gallery, face_app=mock_app, threshold=0.4)
+	result = recognize_frames(frames, gallery, face_app=mock_app, threshold=0.4, enhance_mode="off")
 
 	assert result.names == ["alice"]
 	assert result.unknown == 1
@@ -93,7 +93,13 @@ def test_recognize_frames_no_faces() -> None:
 	mock_app = MagicMock()
 	mock_app.get.return_value = []
 
-	result = recognize_frames(frames, Gallery(), face_app=mock_app, threshold=0.4)
+	result = recognize_frames(
+		frames,
+		Gallery(),
+		face_app=mock_app,
+		threshold=0.4,
+		enhance_mode="off",
+	)
 
 	assert result == RecognitionResult(names=[], unknown=0, matches=[])
 

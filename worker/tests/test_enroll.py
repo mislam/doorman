@@ -48,7 +48,7 @@ def test_build_gallery_embeds_each_photo(tmp_path: Path) -> None:
 	mock_app.get.return_value = [SimpleNamespace(det_score=0.99, normed_embedding=embedding)]
 
 	with patch("enroll.cv2.imread", return_value=_FAKE_IMAGE):
-		gallery = build_gallery(db_dir, face_app=mock_app)
+		gallery = build_gallery(db_dir, face_app=mock_app, enhance_mode="off")
 
 	assert len(gallery.faces) == 2
 	assert {face.name for face in gallery.faces} == {"alice"}
@@ -69,7 +69,7 @@ def test_build_gallery_skips_photos_without_faces(tmp_path: Path) -> None:
 	mock_app.get.side_effect = [[], [SimpleNamespace(det_score=0.5, normed_embedding=embedding)]]
 
 	with patch("enroll.cv2.imread", return_value=_FAKE_IMAGE):
-		gallery = build_gallery(db_dir, face_app=mock_app)
+		gallery = build_gallery(db_dir, face_app=mock_app, enhance_mode="off")
 
 	assert len(gallery.faces) == 1
 	assert gallery.faces[0].photo == "photos/ok.jpg"
@@ -89,7 +89,7 @@ def test_build_gallery_save_and_load(tmp_path: Path) -> None:
 	mock_app.get.return_value = [SimpleNamespace(det_score=0.9, normed_embedding=embedding)]
 
 	with patch("enroll.cv2.imread", return_value=_FAKE_IMAGE):
-		gallery = build_gallery(db_dir, face_app=mock_app)
+		gallery = build_gallery(db_dir, face_app=mock_app, enhance_mode="off")
 	path = db_dir / "gallery.pkl"
 	from gallery import save_gallery
 

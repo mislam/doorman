@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import logging
 import os
 from typing import Any
@@ -9,6 +11,9 @@ from typing import Any
 from gallery import DEFAULT_MODEL
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_DET_THRESH = 0.35
+DEFAULT_DET_SIZE = (640, 640)
 
 _NVIDIA_LIB_MODULES = (
 	"nvidia.cudnn.lib",
@@ -89,14 +94,29 @@ def warmup_face_app(model_name: str = DEFAULT_MODEL) -> None:
 	get_face_app(model_name)
 
 
-def create_face_app(model_name: str = DEFAULT_MODEL) -> Any:
+def create_face_app(
+	model_name: str = DEFAULT_MODEL,
+	*,
+	det_thresh: float = DEFAULT_DET_THRESH,
+	det_size: tuple[int, int] = DEFAULT_DET_SIZE,
+	quiet: bool = False,
+) -> Any:
 	"""Load InsightFace detect + embed model on GPU when available."""
 	ensure_onnxruntime_gpu()
 	from insightface.app import FaceAnalysis
 
-	app = FaceAnalysis(
-		name=model_name,
-		providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-	)
-	app.prepare(ctx_id=0, det_size=(640, 640))
-	return app
+	def _load() -> Any:
+		app = FaceAnalysis(
+			name=model_name,
+			providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+		)
+		app.prepare(ctx_id=0, det_size=det_size, det_thresh=det_thresh)
+		return app
+
+	if quiet:
+		with (
+			contextlib.redirect_stdout(io.StringIO()),
+			contextlib.redirect_stderr(io.StringIO()),
+		):
+			return _load()
+	return _load()

@@ -9,6 +9,8 @@
 		"lint:fix": "prettier --write . --ignore-path .gitignore && ./scripts/ruff.sh fix",
 		"format": "prettier --write . --ignore-path .gitignore",
 		"test": "./scripts/ruff.sh test",
+		"convert:fixtures": "./scripts/convert-fixtures.sh",
+		"test:integration": "./scripts/test-integration.sh",
 		"start": "./scripts/run-worker.sh",
 		"play-stream": "./scripts/run-play-stream.sh",
 		"build:web": "cd web && bun install && bun run build",

@@ -1,0 +1,107 @@
+{
+	"recognition_threshold": 0.4,
+	"enroll": [
+		{
+			"name": "John",
+			"photos": [
+				"public/enroll/john_02.jpg",
+				"public/frames/john_daylight_02.jpg",
+				"public/frames/john_porchlight_01.jpg"
+			]
+		}
+	],
+	"scenarios": [
+		{
+			"id": "john_daylight_01",
+			"frames": ["public/frames/john_daylight_01.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.7,
+			"min_match_score": 0.45
+		},
+		{
+			"id": "john_daylight_02",
+			"frames": ["public/frames/john_daylight_02.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.8,
+			"min_match_score": 0.4
+		},
+		{
+			"id": "john_daylight_03",
+			"frames": ["public/frames/john_daylight_03.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.7,
+			"min_match_score": 0.45
+		},
+		{
+			"id": "john_porchlight_01",
+			"frames": ["public/frames/john_porchlight_01.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.8,
+			"min_match_score": 0.4
+		},
+		{
+			"id": "john_porchlight_02",
+			"frames": ["public/frames/john_porchlight_02.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.8,
+			"min_match_score": 0.65
+		},
+		{
+			"id": "john_porchlight_03",
+			"frames": ["public/frames/john_porchlight_03.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.65,
+			"min_match_score": 0.5
+		},
+		{
+			"id": "john_nightvision_01",
+			"frames": ["public/frames/john_nightvision_01.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.7,
+			"min_match_score": 0.3
+		},
+		{
+			"id": "john_nightvision_02",
+			"frames": ["public/frames/john_nightvision_02.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.8,
+			"min_match_score": 0.35
+		},
+		{
+			"id": "john_nightvision_03",
+			"frames": ["public/frames/john_nightvision_03.jpg"],
+			"expected_names": ["John"],
+			"unknown": 0,
+			"min_det_score": 0.6,
+			"min_match_score": 0.28
+		}
+	],
+	"preprocessing": [
+		{
+			"id": "daylight_backlit",
+			"frame": "public/frames/john_daylight_01.jpg",
+			"expected_names": ["John"],
+			"match_threshold": 0.45
+		},
+		{
+			"id": "daylight_far",
+			"frame": "public/frames/john_daylight_03.jpg",
+			"expected_names": ["John"],
+			"match_threshold": 0.45
+		},
+		{
+			"id": "porch_shadow",
+			"frame": "public/frames/john_porchlight_03.jpg",
+			"expected_names": ["John"],
+			"match_threshold": 0.5
+		}
+	]
+}

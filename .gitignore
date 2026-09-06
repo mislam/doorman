@@ -23,7 +23,12 @@ worker/.pytest_cache/
 worker/*.egg-info/
 worker/dist/
 worker/build/
-worker/.cache/
+worker/.integration-image-stamp
+worker/tests/fixtures/doorbell/public/**/*.jpg
+worker/tests/fixtures/doorbell/public/**/*.jpeg
+worker/tests/fixtures/doorbell/public/**/*.png
+worker/tests/fixtures/doorbell/private/**
+worker/tests/fixtures/doorbell/manifest.private.json
 
 # Editor
 .eslintcache

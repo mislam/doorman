@@ -1,0 +1,22 @@
+{
+	"enroll": [
+		{
+			"name": "PersonB",
+			"photos": [
+				"private/enroll/person_b_01.jpg",
+				"private/enroll/person_b_02.jpg",
+				"private/enroll/person_b_03.jpg"
+			]
+		}
+	],
+	"scenarios": [
+		{
+			"id": "person_b_daylight_01",
+			"frames": ["private/frames/person_b_daylight_01.jpg"],
+			"expected_names": ["PersonB"],
+			"unknown": 0,
+			"min_det_score": 0.7,
+			"min_match_score": 0.45
+		}
+	]
+}

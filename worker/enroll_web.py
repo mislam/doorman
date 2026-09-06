@@ -577,7 +577,7 @@ async def scan_footage(
 @router.post("/api/rebuild", dependencies=[Depends(_verify_enroll_access)])
 def rebuild_gallery(settings: Annotated[Settings, Depends(_get_settings)]) -> RebuildResponse:
 	db_dir = _db_dir(settings)
-	gallery = build_gallery(db_dir)
+	gallery = build_gallery(db_dir, enhance_mode=settings.frame_enhance)
 	if not gallery.faces:
 		raise HTTPException(status_code=422, detail="No faces enrolled")
 

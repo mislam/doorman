@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 import cv2
 import numpy as np
 
+from frame_enhance import detect_faces
 from gallery import DEFAULT_MODEL, EnrolledFace, Gallery, iter_enrollment_photos, save_gallery
 from settings import Settings
 from vision_runtime import create_face_app, log_inference_providers
@@ -26,16 +27,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def embed_photo(app: Any, photo_path: Path) -> NDArray[np.float32] | None:
+def embed_photo(
+	app: Any,
+	photo_path: Path,
+	*,
+	enhance_mode: str = "clahe",
+) -> NDArray[np.float32] | None:
 	"""Return a normalized embedding for the best face in *photo_path*, or ``None``."""
 	image = cv2.imread(str(photo_path))
 	if image is None:
 		logger.warning("Could not read image: %s", photo_path)
 		return None
 
-	faces = app.get(image)
+	faces = detect_faces(app, image, enhance_mode=enhance_mode)
 	if not faces:
-		logger.warning("No face detected in %s", photo_path)
+		logger.debug("No face detected in %s", photo_path)
 		return None
 
 	best = max(faces, key=lambda face: face.det_score)
@@ -47,14 +53,16 @@ def build_gallery(
 	*,
 	model: str = DEFAULT_MODEL,
 	face_app: Any | None = None,
+	enhance_mode: str | None = None,
 ) -> Gallery:
 	"""Scan *db_dir* manifest + photos and embed each enrollment photo."""
 	app = face_app if face_app is not None else create_face_app(model)
+	mode = enhance_mode if enhance_mode is not None else Settings().frame_enhance
 	gallery = Gallery(model=model)
 	db_root = db_dir.resolve()
 
 	for name, photo in iter_enrollment_photos(db_dir):
-		embedding = embed_photo(app, photo)
+		embedding = embed_photo(app, photo, enhance_mode=mode)
 		if embedding is None:
 			continue
 
