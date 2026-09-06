@@ -11,11 +11,11 @@ Read in this order:
 
 1. [`WORKLOG.md`](WORKLOG.md) — active phase and what's next
 2. [`docs/spec.md`](docs/spec.md) — product goal, stack (InsightFace), architecture, Mac vs homelab
-3. [`docs/homelab.md`](docs/homelab.md) — RTX 3060, VRAM budget, deploy path `~/doorface`
+3. [`docs/homelab.md`](docs/homelab.md) — RTX 3060, VRAM budget, deploy path `~/doorman`
 4. [`worker/README.md`](worker/README.md) — env vars, flat module layout, homelab-only vision deps
 5. [`README.md`](README.md) — commands (`bun setup`, `bun run test`, `bun run deploy`)
 
-**Resume phrase:** _"continue doorface"_ → start from `WORKLOG.md`, then implement the active phase
+**Resume phrase:** _"continue doorman"_ → start from `WORKLOG.md`, then implement the active phase
 only.
 
 **What exists:** RTSP grab, recognition (`/recognize`), enroll web UI (`/enroll`), `enroll.py`,
@@ -43,11 +43,11 @@ Development environments.
 - Never read `.env` unless asked; use `.env.example`
 - One WORKLOG phase at a time
 - "Review staged" → `.cursor/rules/pre-commit-review.mdc`
-- **Homelab = Docker only** — no host Python/venv/apt/systemd for Doorface; see
+- **Homelab = Docker only** — no host Python/venv/apt/systemd for Doorman; see
   `.cursor/rules/homelab-docker.mdc`
 
 ## Deploy
 
-`bun run deploy` rsyncs `worker/` to `~/doorface` on `homelab`, then `docker compose build/up`.
-Secrets live only in `~/doorface/.env` on the server. GPU work runs **inside the worker container**
-— never on the homelab host OS.
+`bun run deploy` rsyncs `worker/` to `~/doorman` on `homelab`, then `docker compose build/up`.
+Secrets live only in `~/doorman/.env` on the server. GPU work runs **inside the worker container** —
+never on the homelab host OS.

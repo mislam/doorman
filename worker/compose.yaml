@@ -1,4 +1,4 @@
-name: doorface
+name: doorman
 
 services:
   worker:

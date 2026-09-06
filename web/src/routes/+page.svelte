@@ -230,7 +230,7 @@
 
 <div class="app">
 	<header>
-		<h1>Doorface Enroll</h1>
+		<h1>Doorman Enroll</h1>
 		<p>Live capture uses your doorbell camera. From footage uploads saved recordings.</p>
 	</header>
 
@@ -242,7 +242,7 @@
 	{#if tab === "live"}
 		<div class="card">
 			<label for="name">Person name</label>
-			<input id="name" bind:value={name} placeholder="Reefat" autocomplete="off" />
+			<input id="name" bind:value={name} placeholder="John" autocomplete="off" />
 
 			<div class="steps">
 				{#each steps as step, index}

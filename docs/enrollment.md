@@ -1,6 +1,6 @@
 # Face enrollment
 
-Recognition uses enrollment data on homelab at `~/doorface/db/` (`manifest.json`, `photos/`,
+Recognition uses enrollment data on homelab at `~/doorman/db/` (`manifest.json`, `photos/`,
 `gallery.pkl`). Add and update faces through the **web UI** — deploy does not sync `db/` from Mac.
 
 ## Web UI
@@ -52,7 +52,7 @@ bun run build:web
 If the UI is unavailable but photos already exist on homelab:
 
 ```bash
-ssh homelab 'cd ~/doorface && docker compose exec worker python3.11 enroll.py -v'
+ssh homelab 'cd ~/doorman && docker compose exec worker python3.11 enroll.py -v'
 ```
 
 This rebuilds `gallery.pkl` from `db/manifest.json` and `db/photos/` — it does not copy data from
@@ -83,6 +83,6 @@ Add 2–3 more **doorbell** captures in the web UI, then **Enroll now** again.
 | No faces enrolled     | Face not visible in photo — try clearer shot                                                                                     |
 | Doorbell stream blank | Check `STREAM_URL` / `STREAM_USER` / `STREAM_PASSWORD` in homelab `.env`                                                         |
 | Permission errors     | If `id -u` ≠ 1000, set `DOCKER_UID`/`DOCKER_GID` in homelab `.env`; run `./scripts/fix-homelab-config-perms.sh`, recreate worker |
-| Worker unhealthy      | `ssh homelab 'cd ~/doorface && docker compose logs worker --tail 30'`                                                            |
+| Worker unhealthy      | `ssh homelab 'cd ~/doorman && docker compose logs worker --tail 30'`                                                             |
 
 Env vars: [`worker/README.md`](../worker/README.md).

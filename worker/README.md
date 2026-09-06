@@ -82,14 +82,14 @@ One-time: homelab `.env` is created from `.env.example` on first deploy (never o
 the server for real stream URL and secrets:
 
 ```bash
-ssh homelab 'cd ~/doorface && nano .env'
+ssh homelab 'cd ~/doorman && nano .env'
 ```
 
 Set `STREAM_URL` at minimum (plus `STREAM_USER` / `STREAM_PASSWORD` for Reolink RTSP). Then deploy:
 
 ```bash
 bun run deploy
-cd ~/doorface && docker compose up -d   # or rely on deploy to recreate
+cd ~/doorman && docker compose up -d   # or rely on deploy to recreate
 ```
 
 ## Tests

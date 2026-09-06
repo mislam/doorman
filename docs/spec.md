@@ -1,4 +1,4 @@
-# Doorface — product & technical spec
+# Doorman — product & technical spec
 
 **Version:** v1 draft · **Status:** RTSP ingest working; recognition not implemented
 
@@ -43,7 +43,7 @@ Keep the worker stateless per event: enroll faces from photos on disk; no databa
 ```mermaid
 flowchart LR
   bell[Doorbell pressed] --> ha_trig[HA automation]
-  ha_trig -->|POST /recognize| worker[Doorface worker]
+  ha_trig -->|POST /recognize| worker[Doorman worker]
   worker --> grab[RTSP frame grab]
   grab --> det[Face detect + embed]
   det --> match[Match vs enrolled gallery]
@@ -118,13 +118,13 @@ Gallery: `db/manifest.json` + `db/photos/` on homelab → **Enroll now** in the 
 ```yaml
 # Example — adjust entity and worker URL
 automation:
-  - alias: Doorface — doorbell pressed
+  - alias: Doorman — doorbell pressed
     triggers:
       - trigger: state
         entity_id: binary_sensor.reolink_doorbell
         to: "on"
     actions:
-      - action: rest_command.doorface_recognize
+      - action: rest_command.doorman_recognize
         # or webhook to http://homelab:8768/recognize
 ```
 
@@ -132,7 +132,7 @@ automation:
 
 ```yaml
 automation:
-  - alias: Doorface — notify who is at the door
+  - alias: Doorman — notify who is at the door
     triggers:
       - trigger: webhook
         webhook_id: doorman_notify
@@ -158,7 +158,7 @@ Worker POST example: `{"event":"doorbell","names":["Alice","Bob"],"unknown":0,"t
 | **0 — RTSP**      | `stream.py` + `play_stream` smoke test               | Mac + homelab |
 | **1 — Recognize** | Enroll gallery + detect/match on still or RTSP       | Homelab GPU   |
 | **2 — Integrate** | `/recognize` HTTP + HA webhook notify                | Homelab       |
-| **3 — Ship**      | Docker + `bun run deploy` + `/health` + doorbell E2E | `~/doorface`  |
+| **3 — Ship**      | Docker + `bun run deploy` + `/health` + doorbell E2E | `~/doorman`   |
 | **4 — Tune**      | Thresholds, stream choice, FN/FP on real rings       | Ongoing       |
 
 ## Backlog (post-v1)
@@ -187,13 +187,13 @@ run on homelab.
 
 ## Deploy pattern
 
-| Step     | Action                                                |
-| -------- | ----------------------------------------------------- |
-| Code     | Mac — `bun run test`, `bun lint`                      |
-| GPU test | Homelab — web UI enroll + `curl POST /recognize`      |
-| Deploy   | `bun run deploy` → rsync code to `homelab:~/doorface` |
-| Faces    | Web UI at `/enroll` (not rsync'd from Mac)            |
-| Secrets  | `~/doorface/.env` only (RTSP, HA webhooks)            |
+| Step     | Action                                               |
+| -------- | ---------------------------------------------------- |
+| Code     | Mac — `bun run test`, `bun lint`                     |
+| GPU test | Homelab — web UI enroll + `curl POST /recognize`     |
+| Deploy   | `bun run deploy` → rsync code to `homelab:~/doorman` |
+| Faces    | Web UI at `/enroll` (not rsync'd from Mac)           |
+| Secrets  | `~/doorman/.env` only (RTSP, HA webhooks)            |
 
 ## Acceptance criteria (v1)
 

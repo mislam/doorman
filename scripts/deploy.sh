@@ -2,10 +2,10 @@
 set -e
 
 # Ship worker/ to homelab and rebuild Docker.
-# Secrets on server only: ~/doorface/.env (see worker/.env.example)
+# Secrets on server only: ~/doorman/.env (see worker/.env.example)
 #
 # Usage: bun run deploy
-# DEPLOY_HOST=homelab DEPLOY_DIR=doorface bun run deploy
+# DEPLOY_HOST=homelab DEPLOY_DIR=doorman bun run deploy
 # DEPLOY_SKIP_BUILD=1 bun run deploy
 # DEPLOY_NO_CACHE=1 bun run deploy
 # DEPLOY_SKIP_HEALTH=1 bun run deploy   # exit after compose up (no /health wait)
@@ -15,7 +15,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR"
 
 HOST="${DEPLOY_HOST:-homelab}"
-REMOTE_DIR="${DEPLOY_DIR:-doorface}"
+REMOTE_DIR="${DEPLOY_DIR:-doorman}"
 HEALTH_WAIT_SECS=900
 HEALTH_POLL_SECS=10
 
@@ -130,4 +130,4 @@ ssh "$HOST" "
 	exit 1
 "
 
-echo "Done! Doorface is running on $HOST (~/$REMOTE_DIR)."
+echo "Done! Doorman is running on $HOST (~/$REMOTE_DIR)."

@@ -4,7 +4,7 @@ globs: worker/**/*.py
 alwaysApply: false
 ---
 
-# Python worker (Doorface)
+# Python worker (Doorman)
 
 ## Stack (locked for v1)
 

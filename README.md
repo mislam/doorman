@@ -1,4 +1,4 @@
-# Doorface
+# Doorman
 
 When the **Reolink doorbell rings**, recognize **enrolled family faces** from the camera stream and
 send a **Home Assistant** notification (who's at the door, or unknown visitor).
@@ -27,7 +27,7 @@ Self-hosted on the homelab GPU (RTX 3060). Learning project — small scope, dai
 | `bun run deploy`            | Rsync code → homelab + Docker rebuild           |
 | `bun status`                | Homelab GPU + compose snapshot                  |
 
-Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorface`). First Docker build
+Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorman`). First Docker build
 can take 10–15 min (CUDA base + InsightFace). After `compose up`, deploy waits for `/health` (model
 warmup — prints progress every 10s). Use `DEPLOY_SKIP_BUILD=1` for code-only rsync;
 `DEPLOY_SKIP_HEALTH=1` to skip the wait; `DEPLOY_QUIET=1` to hide build log.
@@ -64,7 +64,7 @@ use the **enroll UI** when **faces** change.
 
 ```
 docs/
-worker/          flat Python modules + Docker (deployed to ~/doorface)
+worker/          flat Python modules + Docker (deployed to ~/doorman)
   stream.py      RTSP frame grab (on demand)
   main.py
   settings.py

@@ -5,11 +5,11 @@ alwaysApply: true
 
 # Homelab — Docker only
 
-On **homelab** (`~/doorface`), Doorface runs **entirely in Docker**. Do not add or document
+On **homelab** (`~/doorman`), Doorman runs **entirely in Docker**. Do not add or document
 host-level app setup outside that boundary.
 
-**Deploy shape:** Mac `rsync worker/` → `~/doorface`, then remote `docker compose build/up`.
-Secrets in `~/doorface/.env` only (never rsync'd; created from `.env.example` on first deploy).
+**Deploy shape:** Mac `rsync worker/` → `~/doorman`, then remote `docker compose build/up`.
+Secrets in `~/doorman/.env` only (never rsync'd; created from `.env.example` on first deploy).
 Host installs **platform only** (NVIDIA driver, Docker, Container Toolkit) — not app Python.
 
 **Bind-mounted `db/`:** compose runs as UID/GID 1000 by default. Fix root-owned files via
@@ -18,17 +18,17 @@ Host installs **platform only** (NVIDIA driver, Docker, Container Toolkit) — n
 ## Do
 
 - `bun run deploy` from Mac (rsync code + `docker compose build/up` on homelab)
-- `docker compose up|build|logs|ps` in `~/doorface`
+- `docker compose up|build|logs|ps` in `~/doorman`
 - One-off GPU tasks via `docker compose run` or `docker run --gpus all` with the worker image
-- Secrets and tuning in `~/doorface/.env` (never rsync'd from Mac)
-- Fix file ownership on mounted `config/` **via a container** (e.g. `docker compose run … chown`)
+- Secrets and tuning in `~/doorman/.env` (never rsync'd from Mac)
+- Fix file ownership on mounted `db/` **via a container** (e.g. `docker compose run … chown`)
   when needed — not `sudo chown` on the host
 
 ## Do not
 
 - Install Python, venv, `pip install -r requirements-vision.txt`, or apt packages on the homelab
-  **host** for Doorface
-- Run `enroll.py` / `main.py` with homelab host `python3.11` or `~/doorface/.venv`
+  **host** for Doorman
+- Run `enroll.py` / `main.py` with homelab host `python3.11` or `~/doorman/.venv`
 - Suggest `ssh homelab 'sudo chown …'` or other host mutations outside Docker
 - Add systemd units, cron, or bare-metal services for the worker — use `compose.yaml`
 

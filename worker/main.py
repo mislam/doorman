@@ -1,4 +1,4 @@
-"""Doorface worker entrypoint — run from worker/: python main.py"""
+"""Doorman worker entrypoint — run from worker/: python main.py"""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 		yield
 		preview_hub.stop()
 
-	app = FastAPI(title="Doorface", version=__version__, lifespan=lifespan)
+	app = FastAPI(title="Doorman", version=__version__, lifespan=lifespan)
 	app.state.settings = settings
 
 	@app.get("/health")
@@ -84,7 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 def main() -> None:
-	parser = argparse.ArgumentParser(description="Doorface worker")
+	parser = argparse.ArgumentParser(description="Doorman worker")
 	parser.add_argument(
 		"--once",
 		action="store_true",

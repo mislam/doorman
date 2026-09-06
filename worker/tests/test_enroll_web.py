@@ -99,13 +99,13 @@ def test_capture_preserves_display_name_with_special_chars(tmp_path: Path) -> No
 		response = client.post(
 			"/enroll/api/capture",
 			headers=_auth_headers(),
-			data={"name": "Reefat O'Brien", "label": "front"},
+			data={"name": "Conor O'Brien", "label": "front"},
 			files={"image": ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
 		)
 
 	assert response.status_code == 200
 	store = load_store(db_dir)
-	assert store.people[0].name == "Reefat O'Brien"
+	assert store.people[0].name == "Conor O'Brien"
 
 
 def test_capture_rejects_no_face(tmp_path: Path) -> None:

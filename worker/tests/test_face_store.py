@@ -20,7 +20,7 @@ from face_store import (
 
 
 def test_validate_display_name_allows_spaces_and_punctuation() -> None:
-	assert validate_display_name("  Reefat O'Brien  ") == "Reefat O'Brien"
+	assert validate_display_name("  Conor O'Brien  ") == "Conor O'Brien"
 
 
 def test_validate_display_name_rejects_empty() -> None:

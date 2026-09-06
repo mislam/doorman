@@ -1,4 +1,4 @@
-# Doorface worker — GPU image (CUDA + cuDNN for ONNX Runtime)
+# Doorman worker — GPU image (CUDA + cuDNN for ONNX Runtime)
 # Use cudnn runtime base, not cuda-runtime-only.
 
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04

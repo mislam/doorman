@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
-# Fix root-owned files in ~/doorface/db via Docker (not host sudo chown).
+# Fix root-owned files in ~/doorman/db via Docker (not host sudo chown).
 #
 # Usage: ./scripts/fix-homelab-config-perms.sh
 
 set -e
 
 HOST="${DEPLOY_HOST:-homelab}"
-REMOTE_DIR="${DEPLOY_DIR:-doorface}"
+REMOTE_DIR="${DEPLOY_DIR:-doorman}"
 
 ssh "$HOST" "cd ~/$REMOTE_DIR && \
 	IMAGE=\$(docker compose images -q worker 2>/dev/null | head -1) && \

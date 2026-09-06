@@ -4,7 +4,7 @@ set -e
 # Homelab status. Usage: bun status
 
 HOST="${DEPLOY_HOST:-homelab}"
-REMOTE_DIR="${DEPLOY_DIR:-doorface}"
+REMOTE_DIR="${DEPLOY_DIR:-doorman}"
 
 echo "=== $HOST:~/$REMOTE_DIR ==="
 

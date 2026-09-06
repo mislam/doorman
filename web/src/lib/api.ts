@@ -1,6 +1,6 @@
 export const base = "/enroll"
 
-const TOKEN_KEY = "doorface-enroll-token"
+const TOKEN_KEY = "doorman-enroll-token"
 
 export function getToken(): string {
 	if (typeof window === "undefined") return ""
