@@ -393,21 +393,10 @@ async def capture_photo(
 	)
 
 
-@router.post("/api/capture/doorbell", dependencies=[Depends(_verify_enroll_access)])
-def capture_doorbell(
-	settings: Annotated[Settings, Depends(_get_settings)],
-	name: Annotated[str, Form()],
-	label: Annotated[str, Form()] = "door",
-) -> CaptureResponse:
+def _grab_doorbell_one_face(settings: Settings) -> NDArray[np.uint8]:
+	"""Return a doorbell frame with exactly one detected face."""
 	if not settings.stream_url:
 		raise HTTPException(status_code=503, detail="STREAM_URL is not configured")
-
-	display_name = _validate_display_name(name)
-	capture_label = label.strip().lower()
-	if capture_label not in CAPTURE_LABELS:
-		raise HTTPException(
-			status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
-		)
 
 	preview_hub.start(settings.capture_stream_url())
 	frame = preview_hub.latest_frame()
@@ -427,21 +416,57 @@ def capture_doorbell(
 	face_app = get_face_app()
 	best_frame: NDArray[np.uint8] | None = None
 	best_faces: list[Any] = []
-	for frame in frames:
-		faces = face_app.get(frame)
+	for candidate in frames:
+		faces = face_app.get(candidate)
 		if len(faces) == 1 and (not best_faces or faces[0].det_score > best_faces[0].det_score):
-			best_frame = frame
+			best_frame = candidate
 			best_faces = faces
 
 	if best_frame is None or len(best_faces) != 1:
-		count = len(best_faces) if best_faces else 0
-		return CaptureResponse(
-			ok=False,
-			label=capture_label,
-			filename="",
-			face_count=count,
-			message="Need exactly one face at the door — adjust position and retry",
+		raise HTTPException(
+			status_code=422,
+			detail="Need exactly one face at the door — adjust position and retry",
 		)
+
+	return best_frame
+
+
+@router.post("/api/capture/doorbell/preview", dependencies=[Depends(_verify_enroll_access)])
+def doorbell_preview(settings: Annotated[Settings, Depends(_get_settings)]) -> Response:
+	"""Grab a doorbell JPEG for client-side staging — does not write to disk."""
+	frame = _grab_doorbell_one_face(settings)
+	payload = _encode_jpeg(frame)
+	if payload is None:
+		raise HTTPException(status_code=500, detail="Failed to encode snapshot")
+	return Response(content=payload, media_type="image/jpeg")
+
+
+@router.post("/api/capture/doorbell", dependencies=[Depends(_verify_enroll_access)])
+def capture_doorbell(
+	settings: Annotated[Settings, Depends(_get_settings)],
+	name: Annotated[str, Form()],
+	label: Annotated[str, Form()] = "door",
+) -> CaptureResponse:
+	display_name = _validate_display_name(name)
+	capture_label = label.strip().lower()
+	if capture_label not in CAPTURE_LABELS:
+		raise HTTPException(
+			status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
+		)
+
+	try:
+		best_frame = _grab_doorbell_one_face(settings)
+	except HTTPException as exc:
+		if exc.status_code == 422:
+			count = 0
+			return CaptureResponse(
+				ok=False,
+				label=capture_label,
+				filename="",
+				face_count=count,
+				message=str(exc.detail),
+			)
+		raise
 
 	record = _save_capture_photo(settings, display_name, capture_label, best_frame)
 
@@ -452,6 +477,35 @@ def capture_doorbell(
 		face_count=1,
 		message="Saved doorbell frame",
 	)
+
+
+@router.post("/api/enroll", dependencies=[Depends(_verify_enroll_access)])
+async def enroll_person(
+	settings: Annotated[Settings, Depends(_get_settings)],
+	name: Annotated[str, Form()],
+	labels: Annotated[list[str], Form()],
+	images: Annotated[list[UploadFile], File()],
+) -> RebuildResponse:
+	"""Save staged photos from the browser, then rebuild gallery.pkl."""
+	display_name = _validate_display_name(name)
+	if not labels:
+		raise HTTPException(status_code=400, detail="Add at least one photo")
+	if len(labels) != len(images):
+		raise HTTPException(status_code=400, detail="Photo labels and images do not match")
+
+	for capture_label, upload in zip(labels, images, strict=True):
+		label = capture_label.strip().lower()
+		if label not in CAPTURE_LABELS:
+			raise HTTPException(
+				status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
+			)
+		data = await upload.read()
+		if not data:
+			raise HTTPException(status_code=400, detail="Empty image")
+		frame = _decode_image(data)
+		_save_capture_photo(settings, display_name, label, frame)
+
+	return rebuild_gallery(settings)
 
 
 @router.get("/api/snapshot.jpg", dependencies=[Depends(_verify_enroll_access)])

@@ -300,3 +300,39 @@ def test_capture_from_scan_skips_detect(tmp_path: Path) -> None:
 	assert data["label"] == "front"
 	store = load_store(db_dir)
 	assert store.people[0].photos[0].label == "front"
+
+
+def test_enroll_person_saves_and_rebuilds(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	db_dir = settings.db_path()
+	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+
+	embedding = np.array([1.0, 0.0], dtype=np.float32)
+	mock_app = MagicMock()
+	mock_app.get.return_value = [SimpleNamespace(det_score=0.9, normed_embedding=embedding)]
+
+	with (
+		patch("main.warmup_face_app"),
+		patch("enroll.create_face_app", return_value=mock_app),
+		patch("enroll.cv2.imread", return_value=image),
+	):
+		response = client.post(
+			"/enroll/api/enroll",
+			headers=_auth_headers(),
+			data={"name": "alice", "labels": ["front", "left"]},
+			files=[
+				("images", ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")),
+				("images", ("left.jpg", BytesIO(encoded.tobytes()), "image/jpeg")),
+			],
+		)
+
+	assert response.status_code == 200
+	data = response.json()
+	assert data["embeddings"] == 2
+	store = load_store(db_dir)
+	assert store.people[0].name == "alice"
+	assert len(store.people[0].photos) == 2
+	assert settings.gallery_path().is_file()
+	assert len(list(photos_dir(db_dir).glob("*.jpg"))) == 2

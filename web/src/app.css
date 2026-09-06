@@ -230,6 +230,20 @@ label {
 	margin-top: 0.75rem;
 }
 
+.enroll-btn {
+	background: var(--ok);
+}
+
+.enroll-btn:hover:not(:disabled) {
+	filter: brightness(1.05);
+}
+
+.section-label {
+	margin: 0 0 0.5rem;
+	font-size: 0.85rem;
+	color: var(--muted);
+}
+
 .card--compact {
 	padding-top: 0.75rem;
 	padding-bottom: 0.75rem;

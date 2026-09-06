@@ -16,11 +16,8 @@ browser session).
 
 ### Enroll (live or footage)
 
-1. Open **Enroll** → enter **Name**
-2. **Live** — person at the door; tap **Capture** for each step (Front → Left → Right)
-3. **Footage** — tap **Capture** per step; pick a doorbell photo or clip (tap a face if several
-   appear)
-4. Tap **Enroll** when done
+1. **Live** or **Footage** — tap **Capture** for each step
+2. Tap **Enroll** → enter **Name** → tap **Enroll** again
 
 Optional: stand at the door and `curl -X POST http://homelab:8768/recognize` to test recognition.
 

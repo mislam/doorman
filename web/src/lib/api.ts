@@ -97,19 +97,30 @@ export async function captureFromStream(name: string, label: string): Promise<Ca
 	return response.json()
 }
 
-/** Upload a scan crop with a step label (front, left, right, door). */
-export async function capturePhoto(
+/** Grab a doorbell JPEG for client-side staging (no disk write). */
+export async function previewDoorbellFrame(): Promise<Blob> {
+	const response = await fetch(apiUrl("/api/capture/doorbell/preview"), {
+		method: "POST",
+		headers: authHeaders(),
+	})
+	if (!response.ok) throw new Error(await parseError(response))
+	return response.blob()
+}
+
+export type EnrollResult = RebuildResult
+
+export async function enrollPerson(
 	name: string,
-	label: string,
-	blob: Blob,
-): Promise<CaptureResult> {
+	photos: Record<string, Blob>,
+): Promise<EnrollResult> {
 	const form = new FormData()
 	form.append("name", name)
-	form.append("label", label)
-	form.append("from_scan", "1")
-	form.append("image", blob, `${label}.jpg`)
+	for (const [label, blob] of Object.entries(photos)) {
+		form.append("labels", label)
+		form.append("images", blob, `${label}.jpg`)
+	}
 
-	const response = await fetch(apiUrl("/api/capture"), {
+	const response = await fetch(apiUrl("/api/enroll"), {
 		method: "POST",
 		headers: authHeaders(),
 		body: form,
