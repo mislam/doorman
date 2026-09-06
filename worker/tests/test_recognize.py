@@ -12,6 +12,7 @@ from gallery import EnrolledFace, Gallery
 from recognize import (
 	RecognitionResult,
 	_match_detected_face,
+	format_notify_message,
 	recognize_frames,
 	recognize_from_settings,
 	result_to_payload,
@@ -176,4 +177,31 @@ def test_result_to_payload_shape() -> None:
 	assert payload["event"] == "doorbell"
 	assert payload["names"] == ["alice"]
 	assert payload["unknown"] == 0
+	assert payload["message"] == "alice is at the door"
 	assert isinstance(payload["ts"], str)
+
+
+def test_format_notify_message() -> None:
+	assert format_notify_message(RecognitionResult(names=["John"], unknown=0, matches=[])) == (
+		"John is at the door"
+	)
+	result = RecognitionResult(names=["John", "Jane"], unknown=0, matches=[])
+	assert format_notify_message(result) == "John and Jane are at the door"
+	assert (
+		format_notify_message(
+			RecognitionResult(names=["John", "Jane", "Bob"], unknown=0, matches=[])
+		)
+		== "John, Jane, and Bob are at the door"
+	)
+	assert format_notify_message(RecognitionResult(names=[], unknown=1, matches=[])) == (
+		"Someone's at the door"
+	)
+	assert format_notify_message(RecognitionResult(names=[], unknown=2, matches=[])) == (
+		"2 people at the door"
+	)
+	assert format_notify_message(RecognitionResult(names=["John"], unknown=1, matches=[])) == (
+		"John and someone else at the door"
+	)
+	assert format_notify_message(RecognitionResult(names=["John"], unknown=2, matches=[])) == (
+		"John and 2 others at the door"
+	)

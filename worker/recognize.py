@@ -150,21 +150,51 @@ def recognize_from_settings(
 	)
 
 
+def format_notify_message(result: RecognitionResult) -> str:
+	"""Human-readable doorbell notification for HA / mobile push."""
+	names = result.names
+	unknown = result.unknown
+
+	if not names and unknown == 0:
+		return "Nobody at the door"
+
+	if names and unknown == 0:
+		subject = _format_name_list(names)
+		verb = "is" if len(names) == 1 else "are"
+		return f"{subject} {verb} at the door"
+
+	if names and unknown > 0:
+		subject = _format_name_list(names)
+		extra = "someone else" if unknown == 1 else f"{unknown} others"
+		return f"{subject} and {extra} at the door"
+
+	if unknown == 1:
+		return "Someone's at the door"
+	return f"{unknown} people at the door"
+
+
+def _format_name_list(names: list[str]) -> str:
+	if len(names) == 1:
+		return names[0]
+	if len(names) == 2:
+		return f"{names[0]} and {names[1]}"
+	return f"{', '.join(names[:-1])}, and {names[-1]}"
+
+
 def result_to_payload(result: RecognitionResult) -> dict[str, object]:
 	"""Serialize a recognition result for HTTP / HA webhook payloads."""
 	return {
 		"event": "doorbell",
 		"names": result.names,
 		"unknown": result.unknown,
+		"message": format_notify_message(result),
 		"ts": datetime.now(UTC).isoformat(),
 	}
 
 
 def log_result(result: RecognitionResult) -> None:
 	"""Log recognition output for a doorbell event."""
-	if result.names:
-		logger.info("Recognized: %s (%d unknown)", ", ".join(result.names), result.unknown)
-	elif result.unknown:
-		logger.info("Unknown visitor (%d face(s))", result.unknown)
+	if result.names or result.unknown:
+		logger.info("%s", format_notify_message(result))
 	else:
 		logger.info("No faces detected")

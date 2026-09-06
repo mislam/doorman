@@ -113,43 +113,75 @@ Gallery: `db/manifest.json` + `db/photos/` on homelab → **Enroll now** in the 
 
 ## Home Assistant integration
 
+Three pieces: `rest_command` in `configuration.yaml`, doorbell automation (HA → worker), notify
+automation (worker → HA). Replace hostnames/IPs and entity ids with yours.
+
+### `configuration.yaml`
+
+```yaml
+rest_command:
+  doorman_recognize:
+    url: "http://homelab:8768/recognize"
+    method: POST
+    timeout: 30
+```
+
+Worker runs on homelab port **8768**. Use the box LAN IP if HA cannot resolve `homelab`.
+
+### Worker `.env` (homelab)
+
+```bash
+HA_WEBHOOK_URL=http://192.168.x.x:8123/api/webhook/doorman_notify
+```
+
+`doorman_notify` must match `webhook_id` in the notify automation below.
+
 ### Trigger (doorbell → worker)
 
 ```yaml
-# Example — adjust entity and worker URL
-automation:
-  - alias: Doorman — doorbell pressed
-    triggers:
-      - trigger: state
-        entity_id: binary_sensor.reolink_doorbell
-        to: "on"
-    actions:
-      - action: rest_command.doorman_recognize
-        # or webhook to http://homelab:8768/recognize
+# automations.yaml
+- id: doorbell_visitor_alert
+  alias: Doorbell Visitor Alert
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.doorbell_visitor
+      to: "on"
+  actions:
+    - action: rest_command.doorman_recognize
+  mode: single
 ```
 
 ### Notify (worker → HA)
 
 ```yaml
-automation:
-  - alias: Doorman — notify who is at the door
-    triggers:
-      - trigger: webhook
-        webhook_id: doorman_notify
-        allowed_methods: [POST]
-    actions:
-      - action: notify.mobile_app
-        data:
-          title: "Doorbell"
-          message: >
-            {% set names = trigger.json.names | default([]) %} {% if names | length > 0 %}
-              {{ names | join(', ') }} at the door
-            {% else %}
-              Unknown visitor ({{ trigger.json.unknown | default(1) }})
-            {% endif %}
+# automations.yaml
+- id: doorman_notify_visitor
+  alias: Doorman Notify Visitor Names
+  triggers:
+    - trigger: webhook
+      webhook_id: doorman_notify
+      allowed_methods:
+        - POST
+      local_only: true
+  actions:
+    - action: notify.send_message
+      target:
+        entity_id: notify.mobile_app_your_phone
+      data:
+        title: Doorbell
+        message: "{{ trigger.json.message }}"
+  mode: single
 ```
 
-Worker POST example: `{"event":"doorbell","names":["Alice","Bob"],"unknown":0,"ts":"..."}`.
+Use your phone's notify entity from **Settings → Devices** (e.g. `notify.mobile_app_iphone`).
+`notify.notify` is a legacy catch-all — avoid it. Older setups may use
+`action: notify.mobile_app_your_phone` with the same `data:` block.
+
+Worker POST example:
+`{"event":"doorbell","names":["Alice"],"unknown":0,"message":"Alice is at the door","ts":"..."}`.
+
+`local_only: true` — worker calls HA on the LAN; blocks direct internet triggers. Use `false` only
+if HA is reached from outside the home network without Nabu Casa.
 
 ## Phases
 
