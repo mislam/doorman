@@ -308,9 +308,9 @@
 		</button>
 
 		{#if askingName}
-			<label for="name">Name</label>
 			<input
 				id="name"
+				class="enroll-name-input"
 				bind:this={nameInput}
 				bind:value={name}
 				placeholder="Who is this?"

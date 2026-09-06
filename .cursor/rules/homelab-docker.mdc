@@ -12,8 +12,7 @@ host-level app setup outside that boundary.
 Secrets in `~/doorman/.env` only (never rsync'd; created from `.env.example` on first deploy).
 Host installs **platform only** (NVIDIA driver, Docker, Container Toolkit) — not app Python.
 
-Worker runs as the container default user (root), same as tasmi-asr — no `user:` override, no
-host `chown`, no UID mapping.
+Worker runs as the container default user (root), no `user:` override, no host `chown`, no UID mapping.
 
 ## Do
 

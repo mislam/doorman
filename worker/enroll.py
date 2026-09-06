@@ -2,7 +2,7 @@
 
 Called by the enroll web UI (/enroll/api/rebuild) and optionally from Docker::
 
-    docker compose exec worker python3.11 enroll.py -v
+    docker compose exec worker python enroll.py -v
 """
 
 from __future__ import annotations

@@ -47,7 +47,7 @@ bun run build:web
 If the UI is unavailable but photos already exist on homelab:
 
 ```bash
-ssh homelab 'cd ~/doorman && docker compose exec worker python3.11 enroll.py -v'
+ssh homelab 'cd ~/doorman && docker compose exec worker python enroll.py -v'
 ```
 
 This rebuilds `gallery.pkl` from `db/manifest.json` and `db/photos/` — it does not copy data from

@@ -96,7 +96,7 @@ One-off tasks (gallery rebuild, logs, shell) use compose — never host Python:
 
 ```bash
 ssh homelab 'cd ~/doorman && docker compose logs worker --tail 30'
-ssh homelab 'cd ~/doorman && docker compose exec worker python3.11 enroll.py -v'
+ssh homelab 'cd ~/doorman && docker compose exec worker python enroll.py -v'
 ```
 
 ## Tests
