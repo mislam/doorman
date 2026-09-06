@@ -8,8 +8,11 @@ Recognition uses enrollment data on homelab at `~/doorman/db/` (`manifest.json`,
 On your phone or laptop (home Wi‑Fi), open:
 
 ```
-http://homelab:8768/enroll
+http://192.168.x.x:8768/enroll
 ```
+
+Replace `192.168.x.x` with your homelab LAN IP (phones and browsers usually cannot resolve the SSH
+hostname).
 
 If `ENROLL_SECRET` is set in homelab `.env`, add `?token=YOUR_SECRET` to the URL once (saved in the
 browser session).
@@ -19,7 +22,8 @@ browser session).
 1. **Live** or **Footage** — tap **Capture** for each step
 2. Tap **Enroll** → enter **Name** → tap **Enroll** again
 
-Optional: stand at the door and `curl -X POST http://homelab:8768/recognize` to test recognition.
+Optional: stand at the door and `curl -X POST http://192.168.x.x:8768/recognize` to test
+recognition.
 
 ### Family vs guests
 
@@ -53,11 +57,11 @@ Mac.
 
 ## Workflows
 
-| Change                      | What to run                                                            |
-| --------------------------- | ---------------------------------------------------------------------- |
-| Code, Dockerfile, enroll UI | `bun run deploy`                                                       |
-| Add / update faces          | Web UI → **Enroll now**                                                |
-| Test recognition            | Web **Test recognize** or `curl -X POST http://homelab:8768/recognize` |
+| Change                      | What to run                                                                |
+| --------------------------- | -------------------------------------------------------------------------- |
+| Code, Dockerfile, enroll UI | `bun run deploy`                                                           |
+| Add / update faces          | Web UI → **Enroll now**                                                    |
+| Test recognition            | Web **Test recognize** or `curl -X POST http://192.168.x.x:8768/recognize` |
 
 Deploy rsyncs code only (`db/` stays on homelab).
 
@@ -67,13 +71,13 @@ Add 2–3 more **doorbell** captures in the web UI, then **Enroll now** again.
 
 ## Troubleshooting
 
-| Problem               | Fix                                                                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Enroll page 401       | Add `?token=` matching `ENROLL_SECRET` in homelab `.env`                                                                         |
-| Enroll page missing   | Run `bun run build:web` then `bun run deploy`                                                                                    |
-| No faces enrolled     | Face not visible in photo — try clearer shot                                                                                     |
-| Doorbell stream blank | Check `STREAM_URL` / `STREAM_USER` / `STREAM_PASSWORD` in homelab `.env`                                                         |
-| Permission errors     | If `id -u` ≠ 1000, set `DOCKER_UID`/`DOCKER_GID` in homelab `.env`; run `./scripts/fix-homelab-config-perms.sh`, recreate worker |
-| Worker unhealthy      | `ssh homelab 'cd ~/doorman && docker compose logs worker --tail 30'`                                                             |
+| Problem               | Fix                                                                      |
+| --------------------- | ------------------------------------------------------------------------ |
+| Enroll page 401       | Add `?token=` matching `ENROLL_SECRET` in homelab `.env`                 |
+| Enroll page missing   | Run `bun run build:web` then `bun run deploy`                            |
+| No faces enrolled     | Face not visible in photo — try clearer shot                             |
+| Doorbell stream blank | Check `STREAM_URL` / `STREAM_USER` / `STREAM_PASSWORD` in homelab `.env` |
+| Permission errors     | Rebuild and recreate: `bun run deploy`                                   |
+| Worker unhealthy      | `ssh homelab 'cd ~/doorman && docker compose logs worker --tail 30'`     |
 
 Env vars: [`worker/README.md`](../worker/README.md).

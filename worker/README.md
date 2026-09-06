@@ -30,10 +30,10 @@ worker/
 
 |                         | Mac (dev)              | Homelab (3060)            |
 | ----------------------- | --------------------- | ------------------------- |
-| Edit code, pytest, ruff | ✓                     | via SSH optional          |
-| RTSP smoke test         | ✓ (`bun play-stream`) | ✓                         |
-| Enroll faces (web UI)   | ✓ (browser)           | ✓                         |
-| InsightFace + doorbell  | —                     | ✓                         |
+| Edit code, pytest, ruff | ✓                     | — (Docker only)           |
+| RTSP smoke test         | ✓ (`bun play-stream`) | — (use web UI / HA)       |
+| Enroll faces (web UI)   | ✓ (browser)           | ✓ (browser → container)   |
+| InsightFace + doorbell  | —                     | ✓ (`docker compose`)      |
 | Docker prod             | —                     | ✓ (`cudnn-runtime` + GPU) |
 
 `bun setup` installs dev deps including OpenCV (needed for `stream.py` and pytest).
@@ -72,24 +72,31 @@ cd worker && cp .env.example .env
 | `WORKER_PORT`           | `8768`      | HTTP port (`/recognize`, `/health`, `/enroll`)                       |
 | `ENROLL_SECRET`         | — (open)    | Optional — set in homelab `.env` to require `?token=` on `/enroll/*` |
 
-Compose runs the worker as UID/GID `1000` by default (`compose.yaml`). If homelab `id -u` is not
-`1000` and enroll hits permission errors, add `DOCKER_UID` / `DOCKER_GID` to homelab `.env` and run
-`./scripts/fix-homelab-config-perms.sh`.
+## Homelab (Docker only)
 
-## Homelab
+Doorman on homelab runs **only inside the worker container**. Do not install Python or run `main.py`
+/ `enroll.py` on the host OS.
 
-One-time: homelab `.env` is created from `.env.example` on first deploy (never overwritten). Edit on
-the server for real stream URL and secrets:
+One-time: first `bun run deploy` creates `~/doorman/.env` from `.env.example` (the only app config
+on the host — compose passes it into the container). Edit that file on homelab, then redeploy:
 
 ```bash
-ssh homelab 'cd ~/doorman && nano .env'
+# on homelab — config file only; app stays in Docker
+nano ~/doorman/.env
 ```
 
-Set `STREAM_URL` at minimum (plus `STREAM_USER` / `STREAM_PASSWORD` for Reolink RTSP). Then deploy:
+Set `STREAM_URL` at minimum (plus `STREAM_USER` / `STREAM_PASSWORD` for Reolink RTSP). Deploy from
+Mac:
 
 ```bash
 bun run deploy
-cd ~/doorman && docker compose up -d   # or rely on deploy to recreate
+```
+
+One-off tasks (gallery rebuild, logs, shell) use compose — never host Python:
+
+```bash
+ssh homelab 'cd ~/doorman && docker compose logs worker --tail 30'
+ssh homelab 'cd ~/doorman && docker compose exec worker python3.11 enroll.py -v'
 ```
 
 ## Tests
@@ -100,5 +107,5 @@ bun run test
 
 ## Enrollment
 
-Web UI: `http://homelab:8768/enroll` (build with `bun run build:web`). See
-[`../docs/enrollment.md`](../docs/enrollment.md).
+Web UI: `http://192.168.x.x:8768/enroll` (replace `x.x` with your homelab LAN IP; build with
+`bun run build:web`). See [`../docs/enrollment.md`](../docs/enrollment.md).

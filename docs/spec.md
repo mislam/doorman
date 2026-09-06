@@ -121,12 +121,12 @@ automation (worker → HA). Replace hostnames/IPs and entity ids with yours.
 ```yaml
 rest_command:
   doorman_recognize:
-    url: "http://homelab:8768/recognize"
+    url: "http://192.168.x.x:8768/recognize"
     method: POST
     timeout: 30
 ```
 
-Worker runs on homelab port **8768**. Use the box LAN IP if HA cannot resolve `homelab`.
+Worker runs on homelab port **8768**. Replace `192.168.x.x` with your homelab LAN IP.
 
 ### Worker `.env` (homelab)
 

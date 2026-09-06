@@ -10,7 +10,6 @@ services:
       WORKER_HOST: "0.0.0.0"
       WORKER_PORT: "8768"
       HOME: /app
-    user: "${DOCKER_UID:-1000}:${DOCKER_GID:-1000}"
     ports:
       - "8768:8768"
     volumes:

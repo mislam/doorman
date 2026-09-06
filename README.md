@@ -17,20 +17,21 @@ Self-hosted on the homelab GPU (RTX 3060). Learning project — small scope, dai
 
 ## Commands
 
-| Command                     | What                                            |
-| --------------------------- | ----------------------------------------------- |
-| `bun setup`                 | Create `worker/.venv` and install dev deps      |
-| `bun lint` / `bun lint:fix` | Prettier + Ruff                                 |
-| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`) |
-| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)           |
-| `bun run build:web`         | Build SvelteKit UI → `worker/static/enroll/`    |
-| `bun run deploy`            | Rsync code → homelab + Docker rebuild           |
-| `bun status`                | Homelab GPU + compose snapshot                  |
+| Command                     | What                                                 |
+| --------------------------- | ---------------------------------------------------- |
+| `bun setup`                 | Create `worker/.venv` and install dev deps           |
+| `bun lint` / `bun lint:fix` | Prettier + Ruff                                      |
+| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)      |
+| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)                |
+| `bun run build:web`         | Build SvelteKit UI → `worker/static/enroll/`         |
+| `bun run deploy`            | Rsync code → homelab + Docker rebuild                |
+| `bun status`                | Homelab Docker compose + GPU snapshot (in container) |
 
 Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorman`). First Docker build
-can take 10–15 min (CUDA base + InsightFace). After `compose up`, deploy waits for `/health` (model
-warmup — prints progress every 10s). Use `DEPLOY_SKIP_BUILD=1` for code-only rsync;
-`DEPLOY_SKIP_HEALTH=1` to skip the wait; `DEPLOY_QUIET=1` to hide build log.
+can take 10–15 min (CUDA base + InsightFace). After `compose up`, deploy waits for the container
+healthcheck (`docker compose up --wait`) — model warmup can take a few minutes. Use
+`DEPLOY_SKIP_BUILD=1` for code-only rsync; `DEPLOY_SKIP_HEALTH=1` to skip the wait; `DEPLOY_QUIET=1`
+to hide build log.
 
 ## Development workflow
 
@@ -47,8 +48,8 @@ bun play-stream -- -v               # optional: verify stream URL
 
 ```bash
 bun run deploy                      # code / UI changes
-# faces: http://homelab:8768/enroll → Enroll now
-curl -X POST http://192.168.1.100:8768/recognize   # test recognition
+# faces: http://192.168.x.x:8768/enroll → Enroll
+curl -X POST http://192.168.x.x:8768/recognize   # test recognition
 ```
 
 | What                      | Mac | Homelab              |

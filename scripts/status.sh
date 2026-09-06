@@ -1,7 +1,8 @@
 #!/usr/bin/env sh
 set -e
 
-# Homelab status. Usage: bun status
+# Homelab status (Docker only — no host curl or app Python).
+# Usage: bun status
 
 HOST="${DEPLOY_HOST:-homelab}"
 REMOTE_DIR="${DEPLOY_DIR:-doorman}"
@@ -15,18 +16,20 @@ ssh "$HOST" "
 		exit 0
 	fi
 	cd ~/$REMOTE_DIR
-	if command -v docker >/dev/null 2>&1 && [ -f compose.yaml ]; then
-		docker compose ps 2>/dev/null || true
-		echo ''
-		docker system df 2>/dev/null || true
+	if ! command -v docker >/dev/null 2>&1 || [ ! -f compose.yaml ]; then
+		echo 'Docker compose not found'
+		exit 0
 	fi
-	if command -v nvidia-smi >/dev/null 2>&1; then
-		echo ''
-		nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader
-	fi
-	if curl -sf http://127.0.0.1:8768/health >/dev/null 2>&1; then
-		echo 'worker: healthy'
-	else
-		echo 'worker: no /health (not implemented or down)'
+	docker compose ps worker 2>/dev/null || true
+	echo ''
+	docker system df 2>/dev/null || true
+	if docker compose ps --status running worker 2>/dev/null | grep -q worker; then
+		if docker compose exec -T worker nvidia-smi \
+			--query-gpu=name,memory.used,memory.total,utilization.gpu \
+			--format=csv,noheader 2>/dev/null; then
+			:
+		else
+			echo 'GPU: nvidia-smi unavailable in worker container'
+		fi
 	fi
 "
