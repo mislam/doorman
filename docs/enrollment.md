@@ -14,26 +14,20 @@ http://homelab:8768/enroll
 If `ENROLL_SECRET` is set in homelab `.env`, add `?token=YOUR_SECRET` to the URL once (saved in the
 browser session).
 
-### Family (live capture)
+### Enroll (live or footage)
 
-1. **Live capture** tab → enter name (`alice`)
-2. Person stands at the door — watch the live stream on your phone
-3. Follow the steps (front, left, right) and tap **Capture from stream** for each
-4. Tap **Enroll now** to rebuild `gallery.pkl`
-5. Optional: **Test recognize** — stand at the door and confirm your name appears
+1. Open **Enroll** → enter **Name**
+2. **Live** — person at the door; tap **Capture** for each step (Front → Left → Right)
+3. **Footage** — tap **Capture** per step; pick a doorbell photo or clip (tap a face if several
+   appear)
+4. Tap **Enroll** when done
 
-Uses your doorbell camera (`STREAM_URL`) — not the phone camera.
+Optional: stand at the door and `curl -X POST http://homelab:8768/recognize` to test recognition.
 
-### Guests / neighbors (from footage)
+### Family vs guests
 
-Consent-based live capture is for family only. For others, use doorbell recordings:
-
-1. **Reolink app** → find the clip → export/share video or stills
-2. **From footage** tab → upload the file
-3. Tap faces to select 2–3 clear crops → enter name → **Save selected**
-4. **Enroll now**
-
-When they stop visiting, delete them in the **Enrolled people** list.
+- **Live** — family at the door (uses doorbell stream, not the phone camera)
+- **Footage** — guests or neighbors from Reolink exports (consent-based)
 
 ### Build the UI (Mac)
 

@@ -35,7 +35,7 @@ RUN python3.11 -m pip install --upgrade pip \
 COPY main.py settings.py stream.py gallery.py face_store.py enroll.py enroll_web.py recognize.py notify.py vision_runtime.py ./
 COPY static/enroll/ ./static/enroll/
 # Runtime data (faces, gallery.pkl) comes from the compose bind mount — not the image.
-RUN mkdir -p db/photos db/sessions
+RUN mkdir -p db/photos
 
 CMD ["python3.11", "main.py"]
 

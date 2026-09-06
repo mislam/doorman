@@ -43,9 +43,6 @@ class Settings(BaseSettings):
 	def gallery_path(self) -> Path:
 		return self.db_path() / "gallery.pkl"
 
-	def sessions_path(self) -> Path:
-		return self.db_path() / "sessions"
-
 	def capture_stream_url(self) -> str:
 		"""Video URL for OpenCV — injects STREAM_USER/PASSWORD with runtime URL encoding."""
 		from stream import build_stream_url

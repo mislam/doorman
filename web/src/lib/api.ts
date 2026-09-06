@@ -47,9 +47,9 @@ export type CaptureResult = {
 	message: string
 }
 
-export type ScanFace = { id: string; thumbnail: string }
+export type ScanFace = { id: string; thumbnail: string; crop: string }
 
-export type ScanResult = { session_id: string; faces: ScanFace[] }
+export type ScanResult = { faces: ScanFace[] }
 
 export type RebuildResult = { embeddings: number; people: number; message: string }
 
@@ -97,7 +97,7 @@ export async function captureFromStream(name: string, label: string): Promise<Ca
 	return response.json()
 }
 
-/** @deprecated Use captureFromStream — uploads a JPEG from the browser */
+/** Upload a scan crop with a step label (front, left, right, door). */
 export async function capturePhoto(
 	name: string,
 	label: string,
@@ -106,6 +106,7 @@ export async function capturePhoto(
 	const form = new FormData()
 	form.append("name", name)
 	form.append("label", label)
+	form.append("from_scan", "1")
 	form.append("image", blob, `${label}.jpg`)
 
 	const response = await fetch(apiUrl("/api/capture"), {
@@ -115,11 +116,6 @@ export async function capturePhoto(
 	})
 	if (!response.ok) throw new Error(await parseError(response))
 	return response.json()
-}
-
-/** @deprecated Use captureFromStream */
-export async function captureDoorbell(name: string, label = "door"): Promise<CaptureResult> {
-	return captureFromStream(name, label)
 }
 
 export function doorbellStreamUrl(): string {
@@ -136,6 +132,16 @@ export function withCacheBust(url: string, tick: number): string {
 	return `${url}${separator}_=${tick}`
 }
 
+/** Decode a data URL (from scan crop) into a JPEG blob for upload. */
+export function dataUrlToBlob(dataUrl: string): Blob {
+	const comma = dataUrl.indexOf(",")
+	if (comma === -1) throw new Error("Invalid image data")
+	const binary = atob(dataUrl.slice(comma + 1))
+	const bytes = new Uint8Array(binary.length)
+	for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+	return new Blob([bytes], { type: "image/jpeg" })
+}
+
 export async function scanFootage(file: File): Promise<ScanResult> {
 	const form = new FormData()
 	form.append("file", file)
@@ -144,20 +150,6 @@ export async function scanFootage(file: File): Promise<ScanResult> {
 		method: "POST",
 		headers: authHeaders(),
 		body: form,
-	})
-	if (!response.ok) throw new Error(await parseError(response))
-	return response.json()
-}
-
-export async function saveCrops(
-	sessionId: string,
-	name: string,
-	faceIds: string[],
-): Promise<{ saved: string[]; message: string }> {
-	const response = await fetch(apiUrl("/api/save-crops"), {
-		method: "POST",
-		headers: { ...authHeaders(), "Content-Type": "application/json" },
-		body: JSON.stringify({ session_id: sessionId, name, face_ids: faceIds }),
 	})
 	if (!response.ok) throw new Error(await parseError(response))
 	return response.json()

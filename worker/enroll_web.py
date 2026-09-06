@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import base64
 import logging
-import shutil
+import tempfile
 import time
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -22,7 +21,6 @@ from enroll import build_gallery
 from face_store import (
 	PersonRecord,
 	PhotoRecord,
-	add_photo_from_file,
 	find_or_create_person,
 	load_store,
 	new_photo_path,
@@ -44,26 +42,17 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CAPTURE_LABELS = frozenset({"front", "left", "right", "door"})
+FOOTAGE_LABEL = "footage"
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png"})
 VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".mkv", ".avi", ".webm"})
 SCAN_FRAME_STEP = 15
 SCAN_DEDUPE_THRESHOLD = 0.95
-SCAN_SESSION_TTL_SEC = 3600
 MJPEG_BOUNDARY = b"frame"
 MJPEG_INTERVAL_SEC = 0.1
 SNAPSHOT_WAIT_SEC = 2.0
 MJPEG_FIRST_FRAME_WAIT_SEC = 5.0
 
 router = APIRouter(prefix="/enroll", tags=["enroll"])
-
-
-@dataclass
-class ScanSession:
-	created_at: float
-	crops: dict[str, Path] = field(default_factory=dict)
-
-
-_scan_sessions: dict[str, ScanSession] = {}
 
 
 class RebuildResponse(BaseModel):
@@ -88,23 +77,12 @@ class CaptureResponse(BaseModel):
 
 class ScanFace(BaseModel):
 	id: str
-	thumbnail: str = Field(description="data:image/jpeg;base64,...")
+	thumbnail: str = Field(description="Small preview — data:image/jpeg;base64,...")
+	crop: str = Field(description="Full crop for client-side staging — data:image/jpeg;base64,...")
 
 
 class ScanResponse(BaseModel):
-	session_id: str
 	faces: list[ScanFace]
-
-
-class SaveCropsRequest(BaseModel):
-	session_id: str
-	name: str
-	face_ids: list[str]
-
-
-class SaveCropsResponse(BaseModel):
-	saved: list[str]
-	message: str
 
 
 def _get_settings(request: Request) -> Settings:
@@ -187,16 +165,21 @@ def _crop_face(
 	return image[top:bottom, left:right]
 
 
-def _thumbnail_base64(image: NDArray[np.uint8], max_size: int = 160) -> str:
+def _jpeg_data_url(image: NDArray[np.uint8], quality: int = 90, max_size: int | None = None) -> str:
 	h, w = image.shape[:2]
-	scale = min(1.0, max_size / max(h, w))
-	if scale < 1.0:
-		image = cv2.resize(image, (int(w * scale), int(h * scale)))
-	ok, encoded = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+	if max_size is not None:
+		scale = min(1.0, max_size / max(h, w))
+		if scale < 1.0:
+			image = cv2.resize(image, (int(w * scale), int(h * scale)))
+	ok, encoded = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
 	if not ok:
-		raise HTTPException(status_code=500, detail="Failed to encode thumbnail")
+		raise HTTPException(status_code=500, detail="Failed to encode image")
 	data = base64.b64encode(encoded.tobytes()).decode("ascii")
 	return f"data:image/jpeg;base64,{data}"
+
+
+def _thumbnail_base64(image: NDArray[np.uint8], max_size: int = 160) -> str:
+	return _jpeg_data_url(image, quality=85, max_size=max_size)
 
 
 def _next_footage_label(person: PersonRecord) -> str:
@@ -211,32 +194,10 @@ def _next_footage_label(person: PersonRecord) -> str:
 	raise HTTPException(status_code=400, detail=msg)
 
 
-def _cleanup_scan_sessions() -> None:
-	now = time.time()
-	expired = [
-		session_id
-		for session_id, session in _scan_sessions.items()
-		if now - session.created_at > SCAN_SESSION_TTL_SEC
-	]
-	for session_id in expired:
-		session = _scan_sessions.pop(session_id, None)
-		if session is not None:
-			for path in session.crops.values():
-				path.unlink(missing_ok=True)
-
-
-def _scan_session_dir(settings: Settings, session_id: str) -> Path:
-	root = settings.sessions_path() / session_id
-	root.mkdir(parents=True, exist_ok=True)
-	return root
-
-
 def _collect_faces_from_frame(
 	image: NDArray[np.uint8],
 	face_app: Any,
 	seen_embeddings: list[NDArray[np.float32]],
-	session: ScanSession,
-	session_dir: Path,
 ) -> list[ScanFace]:
 	found: list[ScanFace] = []
 	for face in face_app.get(image):
@@ -251,29 +212,26 @@ def _collect_faces_from_frame(
 			continue
 
 		face_id = uuid.uuid4().hex[:12]
-		crop_path = session_dir / f"{face_id}.jpg"
-		if not cv2.imwrite(str(crop_path), crop):
-			continue
-
 		seen_embeddings.append(embedding)
-		session.crops[face_id] = crop_path
-		found.append(ScanFace(id=face_id, thumbnail=_thumbnail_base64(crop)))
+		found.append(
+			ScanFace(
+				id=face_id,
+				thumbnail=_thumbnail_base64(crop),
+				crop=_jpeg_data_url(crop),
+			)
+		)
 	return found
 
 
-def _scan_image(
-	path: Path, face_app: Any, session: ScanSession, session_dir: Path
-) -> list[ScanFace]:
+def _scan_image(path: Path, face_app: Any) -> list[ScanFace]:
 	image = cv2.imread(str(path))
 	if image is None:
 		return []
 	seen: list[NDArray[np.float32]] = []
-	return _collect_faces_from_frame(image, face_app, seen, session, session_dir)
+	return _collect_faces_from_frame(image, face_app, seen)
 
 
-def _scan_video(
-	path: Path, face_app: Any, session: ScanSession, session_dir: Path
-) -> list[ScanFace]:
+def _scan_video(path: Path, face_app: Any) -> list[ScanFace]:
 	cap = cv2.VideoCapture(str(path))
 	if not cap.isOpened():
 		return []
@@ -287,7 +245,7 @@ def _scan_video(
 			if not ok or frame is None:
 				break
 			if frame_index % SCAN_FRAME_STEP == 0:
-				found.extend(_collect_faces_from_frame(frame, face_app, seen, session, session_dir))
+				found.extend(_collect_faces_from_frame(frame, face_app, seen))
 			frame_index += 1
 	finally:
 		cap.release()
@@ -365,19 +323,46 @@ async def capture_photo(
 	name: Annotated[str, Form()],
 	label: Annotated[str, Form()],
 	image: Annotated[UploadFile, File()],
+	from_scan: Annotated[str, Form()] = "",
 ) -> CaptureResponse:
 	display_name = _validate_display_name(name)
 	capture_label = label.strip().lower()
-	if capture_label not in CAPTURE_LABELS:
-		raise HTTPException(
-			status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
-		)
+	from_scan_flag = from_scan.strip().lower() in {"1", "true", "yes"}
 
 	data = await image.read()
 	if not data:
 		raise HTTPException(status_code=400, detail="Empty image")
 
 	frame = _decode_image(data)
+
+	if capture_label == FOOTAGE_LABEL:
+		store = load_store(_db_dir(settings))
+		person = find_or_create_person(store, display_name)
+		resolved_label = _next_footage_label(person)
+		record = _save_capture_photo(settings, display_name, resolved_label, frame)
+		return CaptureResponse(
+			ok=True,
+			label=resolved_label,
+			filename=record.label,
+			face_count=1,
+			message="Saved",
+		)
+
+	if capture_label not in CAPTURE_LABELS:
+		raise HTTPException(
+			status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
+		)
+
+	if from_scan_flag:
+		record = _save_capture_photo(settings, display_name, capture_label, frame)
+		return CaptureResponse(
+			ok=True,
+			label=capture_label,
+			filename=record.label,
+			face_count=1,
+			message="Saved",
+		)
+
 	face_app = get_face_app()
 	count = _face_count(frame, face_app)
 	if count == 0:
@@ -507,7 +492,6 @@ async def scan_footage(
 	settings: Annotated[Settings, Depends(_get_settings)],
 	file: Annotated[UploadFile, File()],
 ) -> ScanResponse:
-	_cleanup_scan_sessions()
 	suffix = Path(file.filename or "upload").suffix.lower()
 	if suffix not in IMAGE_SUFFIXES | VIDEO_SUFFIXES:
 		msg = f"Unsupported file type: {suffix or '(none)'}"
@@ -517,69 +501,23 @@ async def scan_footage(
 	if not data:
 		raise HTTPException(status_code=400, detail="Empty upload")
 
-	session_id = uuid.uuid4().hex
-	session_dir = _scan_session_dir(settings, session_id)
-	upload_path = session_dir / f"upload{suffix}"
-	upload_path.write_bytes(data)
+	with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+		tmp.write(data)
+		upload_path = Path(tmp.name)
 
-	session = ScanSession(created_at=time.time())
-	face_app = get_face_app()
-	if suffix in IMAGE_SUFFIXES:
-		faces = _scan_image(upload_path, face_app, session, session_dir)
-	else:
-		faces = _scan_video(upload_path, face_app, session, session_dir)
-
-	upload_path.unlink(missing_ok=True)
-	_scan_sessions[session_id] = session
+	try:
+		face_app = get_face_app()
+		if suffix in IMAGE_SUFFIXES:
+			faces = _scan_image(upload_path, face_app)
+		else:
+			faces = _scan_video(upload_path, face_app)
+	finally:
+		upload_path.unlink(missing_ok=True)
 
 	if not faces:
-		shutil.rmtree(session_dir, ignore_errors=True)
-		_scan_sessions.pop(session_id, None)
 		raise HTTPException(status_code=422, detail="No faces found in upload")
 
-	return ScanResponse(session_id=session_id, faces=faces)
-
-
-@router.post("/api/save-crops", dependencies=[Depends(_verify_enroll_access)])
-def save_crops(
-	body: SaveCropsRequest,
-	settings: Annotated[Settings, Depends(_get_settings)],
-) -> SaveCropsResponse:
-	session = _scan_sessions.get(body.session_id)
-	if session is None:
-		raise HTTPException(status_code=404, detail="Scan session expired — upload again")
-
-	display_name = _validate_display_name(body.name)
-	if not body.face_ids:
-		raise HTTPException(status_code=400, detail="Select at least one face")
-
-	faces_dir = _db_dir(settings)
-	store = load_store(faces_dir)
-	person = find_or_create_person(store, display_name)
-	saved: list[str] = []
-
-	for face_id in body.face_ids:
-		crop_path = session.crops.get(face_id)
-		if crop_path is None or not crop_path.is_file():
-			continue
-		label = _next_footage_label(person)
-		record = add_photo_from_file(
-			store,
-			faces_dir,
-			person=person,
-			label=label,
-			source=crop_path,
-		)
-		saved.append(record.label)
-
-	if not saved:
-		raise HTTPException(status_code=400, detail="No valid face selections")
-
-	save_store(store, faces_dir)
-	return SaveCropsResponse(
-		saved=saved,
-		message=f"Saved {len(saved)} photo(s) for {display_name}",
-	)
+	return ScanResponse(faces=faces)
 
 
 @router.post("/api/rebuild", dependencies=[Depends(_verify_enroll_access)])

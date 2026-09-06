@@ -87,7 +87,7 @@ header p {
 .tabs {
 	display: flex;
 	gap: 0.5rem;
-	margin-bottom: 1rem;
+	margin: 1rem 0;
 }
 
 .tabs button {
@@ -116,7 +116,7 @@ label {
 .steps {
 	display: flex;
 	gap: 0.35rem;
-	margin: 0.75rem 0 1rem;
+	margin: 0.75rem 0 0.5rem;
 }
 
 .step {
@@ -127,6 +127,7 @@ label {
 	border-radius: 8px;
 	border: 1px solid var(--border);
 	color: var(--muted);
+	background: transparent;
 }
 
 .step.active {
@@ -155,6 +156,14 @@ label {
 	width: 100%;
 	height: 100%;
 	object-fit: cover;
+}
+
+.preview-placeholder {
+	margin: 0;
+	padding: 0 1rem;
+	text-align: center;
+	color: var(--muted);
+	font-size: 0.9rem;
 }
 
 .preview-loading {
@@ -208,13 +217,38 @@ label {
 	cursor: pointer;
 }
 
-.drop-zone input[type="file"] {
+.file-input-hidden {
 	position: absolute;
-	inset: 0;
-	width: 100%;
-	height: 100%;
+	width: 0;
+	height: 0;
 	opacity: 0;
-	cursor: pointer;
+	pointer-events: none;
+}
+
+.capture-btn {
+	width: 100%;
+	margin-top: 0.75rem;
+}
+
+.card--compact {
+	padding-top: 0.75rem;
+	padding-bottom: 0.75rem;
+}
+
+.hint--tight {
+	margin: 0.5rem 0 0;
+	text-align: center;
+}
+
+.face-grid--preview {
+	margin: 0;
+	height: 100%;
+	align-content: center;
+	padding: 0.5rem;
+}
+
+.face-grid--preview button {
+	border: 2px solid var(--border);
 }
 
 .actions {

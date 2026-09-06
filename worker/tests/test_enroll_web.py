@@ -220,3 +220,83 @@ def test_snapshot_503_when_no_frame(tmp_path: Path) -> None:
 
 	assert response.status_code == 503
 	assert "STREAM_USER" in response.json()["detail"]
+
+
+def test_scan_returns_crops(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	image = np.zeros((120, 120, 3), dtype=np.uint8)
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+
+	embedding = np.array([1.0, 0.0], dtype=np.float32)
+	mock_face = SimpleNamespace(
+		bbox=np.array([20, 20, 100, 100], dtype=np.float32),
+		normed_embedding=embedding,
+	)
+	mock_app = MagicMock()
+	mock_app.get.return_value = [mock_face]
+
+	with (
+		patch("main.warmup_face_app"),
+		patch("enroll_web.get_face_app", return_value=mock_app),
+	):
+		response = client.post(
+			"/enroll/api/scan",
+			headers=_auth_headers(),
+			files={"file": ("clip.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
+		)
+
+	assert response.status_code == 200
+	data = response.json()
+	assert "session_id" not in data
+	assert len(data["faces"]) == 1
+	assert data["faces"][0]["thumbnail"].startswith("data:image/jpeg;base64,")
+	assert data["faces"][0]["crop"].startswith("data:image/jpeg;base64,")
+
+
+def test_capture_footage_saves_crop(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	db_dir = settings.db_path()
+	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+
+	with patch("main.warmup_face_app"):
+		response = client.post(
+			"/enroll/api/capture",
+			headers=_auth_headers(),
+			data={"name": "guest", "label": "footage"},
+			files={"image": ("crop.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
+		)
+
+	assert response.status_code == 200
+	data = response.json()
+	assert data["ok"] is True
+	assert data["label"] == "footage-1"
+	store = load_store(db_dir)
+	assert len(store.people) == 1
+	assert store.people[0].name == "guest"
+	assert len(list(photos_dir(db_dir).glob("*.jpg"))) == 1
+
+
+def test_capture_from_scan_skips_detect(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	db_dir = settings.db_path()
+	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+
+	with patch("main.warmup_face_app"):
+		response = client.post(
+			"/enroll/api/capture",
+			headers=_auth_headers(),
+			data={"name": "guest", "label": "front", "from_scan": "1"},
+			files={"image": ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
+		)
+
+	assert response.status_code == 200
+	data = response.json()
+	assert data["ok"] is True
+	assert data["label"] == "front"
+	store = load_store(db_dir)
+	assert store.people[0].photos[0].label == "front"

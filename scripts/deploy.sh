@@ -69,6 +69,7 @@ fi
 ssh "$HOST" "
 	set -e
 	cd ~/$REMOTE_DIR
+	mkdir -p db/photos
 	if [ ! -f .env ]; then
 		if [ ! -f .env.example ]; then
 			echo 'Missing .env and .env.example on homelab' >&2
