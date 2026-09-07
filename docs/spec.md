@@ -121,12 +121,14 @@ automation (worker → HA). Replace hostnames/IPs and entity ids with yours.
 ```yaml
 rest_command:
   doorman_recognize:
-    url: "http://192.168.x.x:8768/recognize"
+    url: "https://192.168.x.x:8768/recognize"
     method: POST
     timeout: 30
+    verify_ssl: false
 ```
 
-Worker runs on homelab port **8768**. Replace `192.168.x.x` with your homelab LAN IP.
+Worker is reached on homelab port **8768** over HTTPS (Caddy → worker). Replace `192.168.x.x` with
+your homelab LAN IP. Use `verify_ssl: false` unless you install the Doorman root CA on the HA host.
 
 ### Worker `.env` (homelab)
 

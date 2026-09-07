@@ -50,8 +50,8 @@ bun play-stream -- -v               # optional: verify stream URL
 
 ```bash
 bun run deploy                      # code / UI changes
-# faces: http://192.168.x.x:8768/enroll → Enroll
-curl -X POST http://192.168.x.x:8768/recognize   # test recognition
+# faces: https://192.168.x.x:8768/enroll
+curl -k -X POST https://192.168.x.x:8768/recognize   # test recognition
 ```
 
 | What                      | Mac | Homelab                |

@@ -8,7 +8,6 @@ const config = {
 		adapter: adapter({
 			pages: "../worker/static/enroll",
 			assets: "../worker/static/enroll",
-			fallback: "index.html",
 		}),
 		paths: {
 			base: "/enroll",

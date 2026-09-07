@@ -18,6 +18,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from enroll import build_gallery
+from enroll_pose import PoseStep, adjust_yaw, enrollment_hint, read_pose
 from face_store import (
 	PersonRecord,
 	PhotoRecord,
@@ -33,7 +34,7 @@ from face_store import (
 )
 from gallery import save_gallery as save_gallery_pickle
 from settings import Settings
-from stream import FrameSource, mask_stream_url, preview_hub
+from stream import mask_stream_url, preview_hub
 from vision_runtime import get_face_app
 
 if TYPE_CHECKING:
@@ -41,8 +42,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-CAPTURE_LABELS = frozenset({"front", "left", "right", "door"})
-FOOTAGE_LABEL = "footage"
+PHOTO_LABEL_PREFIX = "photo"
+FOOTAGE_LABEL_PREFIX = "footage"
+ENROLL_SOURCE_LIVE = "live"
+ENROLL_SOURCE_FOOTAGE = "footage"
+VALID_POSE_STEPS = frozenset({"center", "left", "right", "up", "down"})
 IMAGE_SUFFIXES = frozenset({".jpg", ".jpeg", ".png"})
 VIDEO_SUFFIXES = frozenset({".mp4", ".mov", ".mkv", ".avi", ".webm"})
 SCAN_FRAME_STEP = 15
@@ -51,6 +55,9 @@ MJPEG_BOUNDARY = b"frame"
 MJPEG_INTERVAL_SEC = 0.1
 SNAPSHOT_WAIT_SEC = 2.0
 MJPEG_FIRST_FRAME_WAIT_SEC = 5.0
+# Ignore tiny/low-confidence second detections (reflections, posters, partial faces).
+ENROLL_SECONDARY_MIN_DET = 0.45
+ENROLL_SECONDARY_AREA_RATIO = 0.30
 
 router = APIRouter(prefix="/enroll", tags=["enroll"])
 
@@ -83,6 +90,14 @@ class ScanFace(BaseModel):
 
 class ScanResponse(BaseModel):
 	faces: list[ScanFace]
+
+
+class PoseCheckResponse(BaseModel):
+	ok: bool
+	hint: str | None = None
+	yaw: float = 0.0
+	pitch: float = 0.0
+	face_count: int = 0
 
 
 def _get_settings(request: Request) -> Settings:
@@ -165,6 +180,15 @@ def _crop_face(
 	return image[top:bottom, left:right]
 
 
+def _center_square_crop(image: NDArray[np.uint8]) -> NDArray[np.uint8]:
+	"""Center square crop — matches 1:1 enroll preview (object-cover in square viewport)."""
+	h, w = image.shape[:2]
+	side = min(h, w)
+	y0 = (h - side) // 2
+	x0 = (w - side) // 2
+	return image[y0 : y0 + side, x0 : x0 + side]
+
+
 def _jpeg_data_url(image: NDArray[np.uint8], quality: int = 90, max_size: int | None = None) -> str:
 	h, w = image.shape[:2]
 	if max_size is not None:
@@ -182,16 +206,42 @@ def _thumbnail_base64(image: NDArray[np.uint8], max_size: int = 160) -> str:
 	return _jpeg_data_url(image, quality=85, max_size=max_size)
 
 
-def _next_footage_label(person: PersonRecord) -> str:
-	footage_labels = [photo.label for photo in person.photos if photo.label.startswith("footage")]
-	if not footage_labels:
-		return "footage-1"
+def _next_label(person: PersonRecord, prefix: str) -> str:
+	existing = {photo.label for photo in person.photos if photo.label.startswith(f"{prefix}-")}
 	for index in range(1, 100):
-		label = f"footage-{index}"
-		if label not in footage_labels:
+		label = f"{prefix}-{index}"
+		if label not in existing:
 			return label
-	msg = "Too many footage photos"
+	msg = f"Too many {prefix} photos"
 	raise HTTPException(status_code=400, detail=msg)
+
+
+def _next_photo_label(person: PersonRecord) -> str:
+	return _next_label(person, PHOTO_LABEL_PREFIX)
+
+
+def _next_footage_label(person: PersonRecord) -> str:
+	return _next_label(person, FOOTAGE_LABEL_PREFIX)
+
+
+def _normalize_pose_step(step: str | None) -> PoseStep:
+	normalized = (step or "center").strip().lower()
+	if normalized not in VALID_POSE_STEPS:
+		raise HTTPException(
+			status_code=400,
+			detail=f"step must be one of: {', '.join(sorted(VALID_POSE_STEPS))}",
+		)
+	return normalized  # type: ignore[return-value]
+
+
+def _normalize_enroll_source(source: str) -> str:
+	normalized = source.strip().lower()
+	if normalized not in {ENROLL_SOURCE_LIVE, ENROLL_SOURCE_FOOTAGE}:
+		raise HTTPException(
+			status_code=400,
+			detail=f"source must be {ENROLL_SOURCE_LIVE} or {ENROLL_SOURCE_FOOTAGE}",
+		)
+	return normalized
 
 
 def _collect_faces_from_frame(
@@ -335,7 +385,7 @@ async def capture_photo(
 
 	frame = _decode_image(data)
 
-	if capture_label == FOOTAGE_LABEL:
+	if capture_label == FOOTAGE_LABEL_PREFIX:
 		store = load_store(_db_dir(settings))
 		person = find_or_create_person(store, display_name)
 		resolved_label = _next_footage_label(person)
@@ -348,16 +398,14 @@ async def capture_photo(
 			message="Saved",
 		)
 
-	if capture_label not in CAPTURE_LABELS:
-		raise HTTPException(
-			status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
-		)
-
 	if from_scan_flag:
-		record = _save_capture_photo(settings, display_name, capture_label, frame)
+		store = load_store(_db_dir(settings))
+		person = find_or_create_person(store, display_name)
+		resolved_label = _next_footage_label(person)
+		record = _save_capture_photo(settings, display_name, resolved_label, frame)
 		return CaptureResponse(
 			ok=True,
-			label=capture_label,
+			label=resolved_label,
 			filename=record.label,
 			face_count=1,
 			message="Saved",
@@ -368,7 +416,7 @@ async def capture_photo(
 	if count == 0:
 		return CaptureResponse(
 			ok=False,
-			label=capture_label,
+			label="",
 			filename="",
 			face_count=0,
 			message="No face detected — try again",
@@ -376,65 +424,296 @@ async def capture_photo(
 	if count > 1:
 		return CaptureResponse(
 			ok=False,
-			label=capture_label,
+			label="",
 			filename="",
 			face_count=count,
 			message=f"{count} faces detected — one person per photo",
 		)
 
-	record = _save_capture_photo(settings, display_name, capture_label, frame)
+	store = load_store(_db_dir(settings))
+	person = find_or_create_person(store, display_name)
+	resolved_label = _next_photo_label(person)
+	record = _save_capture_photo(settings, display_name, resolved_label, frame)
 
 	return CaptureResponse(
 		ok=True,
-		label=capture_label,
+		label=resolved_label,
 		filename=record.label,
 		face_count=1,
 		message="Saved",
 	)
 
 
-def _grab_doorbell_one_face(settings: Settings) -> NDArray[np.uint8]:
-	"""Return a doorbell frame with exactly one detected face."""
+def _face_bbox_area(face: Any) -> float:
+	x1, y1, x2, y2 = face.bbox.astype(float)
+	return max(0.0, (x2 - x1) * (y2 - y1))
+
+
+def _face_rank(face: Any) -> float:
+	return float(face.det_score) * _face_bbox_area(face)
+
+
+def _primary_enroll_face(faces: list[Any]) -> tuple[Any | None, int]:
+	"""Pick the person at the door; drop weak extra detections on the same frame."""
+	if not faces:
+		return None, 0
+
+	ordered = sorted(faces, key=_face_rank, reverse=True)
+	primary = ordered[0]
+	if len(ordered) == 1:
+		return primary, 1
+
+	secondary = ordered[1]
+	primary_area = _face_bbox_area(primary)
+	secondary_area = _face_bbox_area(secondary)
+	if float(secondary.det_score) < ENROLL_SECONDARY_MIN_DET:
+		return primary, 1
+	if primary_area > 0 and secondary_area < primary_area * ENROLL_SECONDARY_AREA_RATIO:
+		return primary, 1
+
+	return None, len(ordered)
+
+
+def _doorbell_face_probe(
+	settings: Settings,
+) -> tuple[NDArray[np.uint8] | None, Any | None, int]:
+	"""Return best single-face frame from the doorbell preview hub, or face count when ambiguous."""
 	if not settings.stream_url:
 		raise HTTPException(status_code=503, detail="STREAM_URL is not configured")
 
 	preview_hub.start(settings.capture_stream_url())
 	frame = preview_hub.latest_frame()
-	frames: list[NDArray[np.uint8]] = []
-	if frame is not None:
-		frames = [frame]
-	else:
-		source = FrameSource(url=settings.capture_stream_url())
-		try:
-			frames = source.grab_event_frames(3)
-		finally:
-			source.close()
+	if frame is None:
+		return None, None, 0
 
-	if not frames:
-		raise HTTPException(status_code=503, detail="Could not grab frame from doorbell stream")
-
+	frame = _center_square_crop(frame)
 	face_app = get_face_app()
-	best_frame: NDArray[np.uint8] | None = None
-	best_faces: list[Any] = []
-	for candidate in frames:
-		faces = face_app.get(candidate)
-		if len(faces) == 1 and (not best_faces or faces[0].det_score > best_faces[0].det_score):
-			best_frame = candidate
-			best_faces = faces
+	best_face, face_count = _primary_enroll_face(face_app.get(frame))
+	return frame, best_face, face_count
 
-	if best_frame is None or len(best_faces) != 1:
+
+def _image_face_probe(image: NDArray[np.uint8]) -> tuple[Any | None, int]:
+	face_app = get_face_app()
+	return _primary_enroll_face(face_app.get(image))
+
+
+def _pose_check_from_face(
+	best_face: Any,
+	pose_step: PoseStep,
+	*,
+	frame_h: int,
+	frame_w: int,
+	baseline_yaw: float | None = None,
+	baseline_pitch: float | None = None,
+	mirror_yaw: bool = False,
+) -> PoseCheckResponse:
+	quality_hint = enrollment_hint(
+		best_face,
+		pose_step,
+		frame_h,
+		frame_w,
+		baseline_yaw=baseline_yaw,
+		baseline_pitch=baseline_pitch,
+		mirror_yaw=mirror_yaw,
+	)
+	yaw, pitch, _roll = read_pose(best_face)
+	yaw = adjust_yaw(yaw, mirror_yaw)
+	return PoseCheckResponse(
+		ok=quality_hint is None,
+		hint=quality_hint,
+		yaw=yaw,
+		pitch=pitch,
+		face_count=1,
+	)
+
+
+def _grab_image_one_face(
+	image: NDArray[np.uint8],
+	*,
+	pose_step: PoseStep = "center",
+	baseline_yaw: float | None = None,
+	baseline_pitch: float | None = None,
+	mirror_yaw: bool = False,
+) -> tuple[NDArray[np.uint8], Any]:
+	best_face, face_count = _image_face_probe(image)
+
+	if face_count == 0:
+		raise HTTPException(status_code=422, detail="No face visible")
+	if face_count > 1:
+		raise HTTPException(status_code=422, detail="One person only")
+	if best_face is None:
+		raise HTTPException(status_code=422, detail="No face visible")
+
+	h, w = image.shape[:2]
+	hint = enrollment_hint(
+		best_face,
+		pose_step,
+		h,
+		w,
+		baseline_yaw=baseline_yaw,
+		baseline_pitch=baseline_pitch,
+		mirror_yaw=mirror_yaw,
+	)
+	if hint is not None:
+		raise HTTPException(status_code=422, detail=hint)
+
+	return image, best_face
+
+
+def _grab_doorbell_one_face(
+	settings: Settings,
+	*,
+	pose_step: PoseStep = "center",
+	baseline_yaw: float | None = None,
+	baseline_pitch: float | None = None,
+) -> tuple[NDArray[np.uint8], Any]:
+	"""Return a doorbell frame and its face when exactly one face is detected."""
+	frame, best_face, face_count = _doorbell_face_probe(settings)
+
+	if face_count == 0:
 		raise HTTPException(
 			status_code=422,
-			detail="Need exactly one face at the door — adjust position and retry",
+			detail="No face visible",
 		)
+	if face_count > 1:
+		raise HTTPException(
+			status_code=422,
+			detail="One person only",
+		)
+	if frame is None or best_face is None:
+		raise HTTPException(status_code=503, detail="Could not grab frame from doorbell stream")
 
-	return best_frame
+	h, w = frame.shape[:2]
+	hint = enrollment_hint(
+		best_face,
+		pose_step,
+		h,
+		w,
+		baseline_yaw=baseline_yaw,
+		baseline_pitch=baseline_pitch,
+	)
+	if hint is not None:
+		raise HTTPException(status_code=422, detail=hint)
+
+	return frame, best_face
+
+
+@router.get("/api/capture/doorbell/pose", dependencies=[Depends(_verify_enroll_access)])
+def doorbell_pose_check(
+	settings: Annotated[Settings, Depends(_get_settings)],
+	step: Annotated[str | None, Query()] = None,
+	baseline_yaw: Annotated[float | None, Query()] = None,
+	baseline_pitch: Annotated[float | None, Query()] = None,
+) -> PoseCheckResponse:
+	"""Poll head pose for guided live enrollment (no image transfer)."""
+	pose_step = _normalize_pose_step(step)
+	_frame, best_face, face_count = _doorbell_face_probe(settings)
+
+	if face_count == 0:
+		return PoseCheckResponse(ok=False, hint="No face visible")
+	if face_count > 1:
+		return PoseCheckResponse(ok=False, hint="One person only", face_count=face_count)
+	if best_face is None:
+		return PoseCheckResponse(ok=False, hint="Connecting to doorbell…")
+
+	h, w = _frame.shape[:2]
+	hint = enrollment_hint(
+		best_face,
+		pose_step,
+		h,
+		w,
+		baseline_yaw=baseline_yaw,
+		baseline_pitch=baseline_pitch,
+	)
+	yaw, pitch, _roll = read_pose(best_face)
+	return PoseCheckResponse(
+		ok=hint is None,
+		hint=hint,
+		yaw=yaw,
+		pitch=pitch,
+		face_count=1,
+	)
+
+
+@router.post("/api/capture/phone/pose", dependencies=[Depends(_verify_enroll_access)])
+async def phone_pose_check(
+	image: Annotated[UploadFile, File()],
+	step: Annotated[str | None, Query()] = None,
+	baseline_yaw: Annotated[float | None, Query()] = None,
+	baseline_pitch: Annotated[float | None, Query()] = None,
+	mirror_yaw: Annotated[bool, Query()] = True,
+) -> PoseCheckResponse:
+	"""Poll head pose from a phone camera frame (InsightFace on uploaded JPEG)."""
+	pose_step = _normalize_pose_step(step)
+	data = await image.read()
+	if not data:
+		raise HTTPException(status_code=400, detail="Empty image")
+
+	frame = _decode_image(data)
+	frame = _center_square_crop(frame)
+	best_face, face_count = _image_face_probe(frame)
+
+	if face_count == 0:
+		return PoseCheckResponse(ok=False, hint="No face visible")
+	if face_count > 1:
+		return PoseCheckResponse(ok=False, hint="One person only", face_count=face_count)
+	if best_face is None:
+		return PoseCheckResponse(ok=False, hint="No face visible")
+
+	return _pose_check_from_face(
+		best_face,
+		pose_step,
+		frame_h=frame.shape[0],
+		frame_w=frame.shape[1],
+		baseline_yaw=baseline_yaw,
+		baseline_pitch=baseline_pitch,
+		mirror_yaw=mirror_yaw,
+	)
+
+
+@router.post("/api/capture/phone/preview", dependencies=[Depends(_verify_enroll_access)])
+async def phone_preview(
+	image: Annotated[UploadFile, File()],
+	step: Annotated[str | None, Query()] = None,
+	baseline_yaw: Annotated[float | None, Query()] = None,
+	baseline_pitch: Annotated[float | None, Query()] = None,
+	mirror_yaw: Annotated[bool, Query()] = True,
+) -> Response:
+	"""Validate pose on a phone frame and return the JPEG for client-side staging."""
+	pose_step = _normalize_pose_step(step)
+	data = await image.read()
+	if not data:
+		raise HTTPException(status_code=400, detail="Empty image")
+
+	frame = _decode_image(data)
+	_validated_frame, _face = _grab_image_one_face(
+		frame,
+		pose_step=pose_step,
+		baseline_yaw=baseline_yaw,
+		baseline_pitch=baseline_pitch,
+		mirror_yaw=mirror_yaw,
+	)
+	payload = _encode_jpeg(frame)
+	if payload is None:
+		raise HTTPException(status_code=500, detail="Failed to encode snapshot")
+	return Response(content=payload, media_type="image/jpeg")
 
 
 @router.post("/api/capture/doorbell/preview", dependencies=[Depends(_verify_enroll_access)])
-def doorbell_preview(settings: Annotated[Settings, Depends(_get_settings)]) -> Response:
+def doorbell_preview(
+	settings: Annotated[Settings, Depends(_get_settings)],
+	step: Annotated[str | None, Query()] = None,
+	baseline_yaw: Annotated[float | None, Query()] = None,
+	baseline_pitch: Annotated[float | None, Query()] = None,
+) -> Response:
 	"""Grab a doorbell JPEG for client-side staging — does not write to disk."""
-	frame = _grab_doorbell_one_face(settings)
+	pose_step = _normalize_pose_step(step)
+	frame, _face = _grab_doorbell_one_face(
+		settings,
+		pose_step=pose_step,
+		baseline_yaw=baseline_yaw,
+		baseline_pitch=baseline_pitch,
+	)
 	payload = _encode_jpeg(frame)
 	if payload is None:
 		raise HTTPException(status_code=500, detail="Failed to encode snapshot")
@@ -445,17 +724,16 @@ def doorbell_preview(settings: Annotated[Settings, Depends(_get_settings)]) -> R
 def capture_doorbell(
 	settings: Annotated[Settings, Depends(_get_settings)],
 	name: Annotated[str, Form()],
-	label: Annotated[str, Form()] = "door",
+	step: Annotated[str | None, Form()] = None,
 ) -> CaptureResponse:
 	display_name = _validate_display_name(name)
-	capture_label = label.strip().lower()
-	if capture_label not in CAPTURE_LABELS:
-		raise HTTPException(
-			status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
-		)
+	pose_step = _normalize_pose_step(step)
+	store = load_store(_db_dir(settings))
+	person = find_or_create_person(store, display_name)
+	capture_label = _next_photo_label(person)
 
 	try:
-		best_frame = _grab_doorbell_one_face(settings)
+		best_frame, _face = _grab_doorbell_one_face(settings, pose_step=pose_step)
 	except HTTPException as exc:
 		if exc.status_code == 422:
 			count = 0
@@ -479,32 +757,51 @@ def capture_doorbell(
 	)
 
 
+def _save_enrollment_images(
+	settings: Settings,
+	display_name: str,
+	images: list[NDArray[np.uint8]],
+	*,
+	source: str,
+) -> int:
+	faces_dir = _db_dir(settings)
+	store = load_store(faces_dir)
+	person = find_or_create_person(store, display_name)
+	label_fn = _next_footage_label if source == ENROLL_SOURCE_FOOTAGE else _next_photo_label
+
+	for frame in images:
+		label = label_fn(person)
+		_, photo_path = new_photo_path(faces_dir)
+		photo_path.parent.mkdir(parents=True, exist_ok=True)
+		if not cv2.imwrite(str(photo_path), frame):
+			raise HTTPException(status_code=500, detail="Failed to save photo")
+		register_photo(person, label, photo_path)
+
+	save_store(store, faces_dir)
+	return len(images)
+
+
 @router.post("/api/enroll", dependencies=[Depends(_verify_enroll_access)])
 async def enroll_person(
 	settings: Annotated[Settings, Depends(_get_settings)],
 	name: Annotated[str, Form()],
-	labels: Annotated[list[str], Form()],
 	images: Annotated[list[UploadFile], File()],
+	source: Annotated[str, Form()] = ENROLL_SOURCE_LIVE,
 ) -> RebuildResponse:
 	"""Save staged photos from the browser, then rebuild gallery.pkl."""
 	display_name = _validate_display_name(name)
-	if not labels:
+	enroll_source = _normalize_enroll_source(source)
+	if not images:
 		raise HTTPException(status_code=400, detail="Add at least one photo")
-	if len(labels) != len(images):
-		raise HTTPException(status_code=400, detail="Photo labels and images do not match")
 
-	for capture_label, upload in zip(labels, images, strict=True):
-		label = capture_label.strip().lower()
-		if label not in CAPTURE_LABELS:
-			raise HTTPException(
-				status_code=400, detail=f"Label must be one of: {', '.join(CAPTURE_LABELS)}"
-			)
+	decoded: list[NDArray[np.uint8]] = []
+	for upload in images:
 		data = await upload.read()
 		if not data:
 			raise HTTPException(status_code=400, detail="Empty image")
-		frame = _decode_image(data)
-		_save_capture_photo(settings, display_name, label, frame)
+		decoded.append(_decode_image(data))
 
+	_save_enrollment_images(settings, display_name, decoded, source=enroll_source)
 	return rebuild_gallery(settings)
 
 

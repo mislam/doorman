@@ -10,8 +10,8 @@ services:
       WORKER_HOST: "0.0.0.0"
       WORKER_PORT: "8768"
       HOME: /app
-    ports:
-      - "8768:8768"
+    expose:
+      - "8768"
     volumes:
       - ./db:/app/db
       - hf_cache:/app/.cache
@@ -35,6 +35,18 @@ services:
       timeout: 5s
       start_period: 180s
       retries: 3
+
+  enroll:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8768:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+    depends_on:
+      worker:
+        condition: service_healthy
 
 volumes:
   hf_cache:

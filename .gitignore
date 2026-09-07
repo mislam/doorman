@@ -3,6 +3,7 @@ web/node_modules/
 web/.svelte-kit/
 worker/static/enroll/
 worker/db/
+worker/certs/
 
 # OS
 .DS_Store

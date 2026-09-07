@@ -55,7 +55,7 @@ fi
 rsync -az --delete \
 	--exclude .venv --exclude __pycache__ --exclude .pytest_cache --exclude .ruff_cache \
 	--exclude .env --exclude .DS_Store \
-	--exclude db/ \
+	--exclude db/ --exclude certs/ \
 	worker/ "$HOST:~/$REMOTE_DIR/"
 
 if [ "${DEPLOY_SKIP_BUILD:-}" = "1" ]; then
@@ -74,7 +74,12 @@ ssh "$HOST" "
 		fi
 		cp .env.example .env
 		echo 'Created ~/$REMOTE_DIR/.env from .env.example'
-		echo '  → edit STREAM_URL, STREAM_USER/PASSWORD, HA_WEBHOOK_URL on homelab before prod use'
+		echo '  → edit STREAM_URL, STREAM_USER/PASSWORD, HA_WEBHOOK_URL, ENROLL_LAN_IP on homelab before prod use'
+	fi
+	if ! [ -f certs/enroll.crt ]; then
+		echo 'Generating enroll TLS certs (first deploy)...'
+		chmod +x scripts/generate-enroll-tls.sh
+		./scripts/generate-enroll-tls.sh
 	fi
 "
 
@@ -99,7 +104,7 @@ if [ "${DEPLOY_NO_CACHE:-}" = "1" ]; then
 else
 	BUILD_CMD="docker compose $COMPOSE_FLAGS build worker"
 fi
-UP_CMD="docker compose up -d --force-recreate $WAIT_FLAGS worker"
+UP_CMD="docker compose up -d --force-recreate $WAIT_FLAGS"
 
 if ! ssh -t "$HOST" "$REMOTE && $BUILD_CMD && $UP_CMD"; then
 	echo "Deploy failed on $HOST. Recent logs:"
@@ -113,7 +118,5 @@ ssh "$HOST" "docker image prune -f >/dev/null 2>&1 || true"
 if [ "${DEPLOY_SKIP_HEALTH:-}" = "1" ]; then
 	echo "Synced to $HOST (~/$REMOTE_DIR). Skipped health wait (DEPLOY_SKIP_HEALTH=1)."
 else
-	echo "Worker is healthy on $HOST (~/$REMOTE_DIR)."
+	echo "Done — Doorman is healthy on $HOST (~/$REMOTE_DIR)."
 fi
-
-echo "Done! Doorman is running on $HOST (~/$REMOTE_DIR)."

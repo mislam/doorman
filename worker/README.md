@@ -60,24 +60,25 @@ cd worker && cp .env.example .env
 
 ## Env (`worker/.env`)
 
-| Var                     | Default     | Role                                                                 |
-| ----------------------- | ----------- | -------------------------------------------------------------------- |
-| `STREAM_URL`            | —           | Video host/path (no credentials for RTSP)                            |
-| `STREAM_USER`           | —           | RTSP username (plain text; encoded at runtime)                       |
-| `STREAM_PASSWORD`       | —           | RTSP password (plain text; encoded at runtime)                       |
-| `HA_WEBHOOK_URL`        | —           | HA notify webhook (secret in URL path)                               |
-| `DB_DIR`                | `db`        | Enrollment data (`manifest.json`, `photos/`, `gallery.pkl`)          |
-| `RECOGNITION_THRESHOLD` | `0.4`       | Match score cutoff (tune on homelab)                                 |
-| `FRAME_ENHANCE`         | `clahe`     | Pre-detect shadow lift: `clahe` or `off`                             |
-| `FRAMES_PER_EVENT`      | `5`         | RTSP frames to grab per doorbell ring                                |
-| `WORKER_HOST`           | `127.0.0.1` | HTTP bind (`0.0.0.0` in Docker)                                      |
-| `WORKER_PORT`           | `8768`      | HTTP port (`/recognize`, `/health`, `/enroll`)                       |
-| `ENROLL_SECRET`         | — (open)    | Optional — set in homelab `.env` to require `?token=` on `/enroll/*` |
+| Var                     | Default     | Role                                                                  |
+| ----------------------- | ----------- | --------------------------------------------------------------------- |
+| `STREAM_URL`            | —           | Video host/path (no credentials for RTSP)                             |
+| `STREAM_USER`           | —           | RTSP username (plain text; encoded at runtime)                        |
+| `STREAM_PASSWORD`       | —           | RTSP password (plain text; encoded at runtime)                        |
+| `HA_WEBHOOK_URL`        | —           | HA notify webhook (secret in URL path)                                |
+| `DB_DIR`                | `db`        | Enrollment data (`manifest.json`, `photos/`, `gallery.pkl`)           |
+| `RECOGNITION_THRESHOLD` | `0.4`       | Match score cutoff (tune on homelab)                                  |
+| `FRAME_ENHANCE`         | `clahe`     | Pre-detect shadow lift: `clahe` or `off`                              |
+| `FRAMES_PER_EVENT`      | `5`         | RTSP frames to grab per doorbell ring                                 |
+| `WORKER_HOST`           | `127.0.0.1` | HTTP bind (`0.0.0.0` in Docker)                                       |
+| `WORKER_PORT`           | `8768`      | Worker listen port (internal; Caddy publishes HTTPS on host **8768**) |
+| `ENROLL_LAN_IP`         | —           | Homelab LAN IP for enroll TLS cert SAN (required on first deploy)     |
+| `ENROLL_SECRET`         | — (open)    | Optional — set in homelab `.env` to require `?token=` on `/enroll/*`  |
 
 ## Homelab (Docker only)
 
-Doorman on homelab runs **only inside the worker container**. Do not install Python or run `main.py`
-/ `enroll.py` on the host OS.
+Doorman on homelab runs **only inside Docker** (`worker` + `enroll` Caddy proxy). Do not install
+Python or run `main.py` / `enroll.py` on the host OS.
 
 One-time: first `bun run deploy` creates `~/doorman/.env` from `.env.example` (the only app config
 on the host — compose passes it into the container). Edit that file on homelab, then redeploy:
@@ -98,8 +99,14 @@ One-off tasks (gallery rebuild, logs, shell) use compose — never host Python:
 
 ```bash
 ssh homelab 'cd ~/doorman && docker compose logs worker --tail 30'
+ssh homelab 'cd ~/doorman && docker compose logs enroll --tail 20'
 ssh homelab 'cd ~/doorman && docker compose exec worker python enroll.py -v'
 ```
+
+## Enrollment
+
+`https://192.168.x.x:8768/enroll` — build UI with `bun run build:web`. Trust the **Doorman** CA on
+phones for live camera — see [`../docs/enrollment.md`](../docs/enrollment.md).
 
 ## Tests
 
@@ -112,8 +119,3 @@ bun run test:integration      # Homelab Docker: doorbell footage fixtures
 Fixture layout: `tests/fixtures/doorbell/` — see README there. Large JPEGs are gitignored; rsync
 deploys them to homelab for integration runs. The image rebuilds automatically when Dockerfile or
 requirements change.
-
-## Enrollment
-
-Web UI: `http://192.168.x.x:8768/enroll` (replace `x.x` with your homelab LAN IP; build with
-`bun run build:web`). See [`../docs/enrollment.md`](../docs/enrollment.md).

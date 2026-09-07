@@ -20,7 +20,7 @@ ssh "$HOST" "
 		echo 'Docker compose not found'
 		exit 0
 	fi
-	docker compose ps worker 2>/dev/null || true
+	docker compose ps 2>/dev/null || true
 	echo ''
 	docker system df 2>/dev/null || true
 	if docker compose ps --status running worker 2>/dev/null | grep -q worker; then

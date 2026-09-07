@@ -30,7 +30,7 @@ async function parseError(response: Response): Promise<string> {
 	try {
 		const data = await response.json()
 		if (typeof data.detail === "string") return data.detail
-		if (Array.isArray(data.detail)) return data.detail.map((d) => d.msg).join(", ")
+		if (Array.isArray(data.detail)) return data.detail.map((d: { msg: string }) => d.msg).join(", ")
 	} catch {
 		// ignore
 	}
@@ -60,6 +60,62 @@ export type RecognizeResult = {
 	ts: string
 }
 
+export type PoseStep = "center" | "left" | "right" | "up" | "down"
+
+export type EnrollSource = "live" | "footage"
+
+export type PoseCheckResult = {
+	ok: boolean
+	hint: string | null
+	yaw: number
+	pitch: number
+	face_count: number
+}
+
+type PoseQuery = { baselineYaw?: number; baselinePitch?: number }
+
+function poseQueryParams(step: PoseStep, opts?: PoseQuery): URLSearchParams {
+	const params = new URLSearchParams({ step })
+	if (opts?.baselineYaw !== undefined) params.set("baseline_yaw", String(opts.baselineYaw))
+	if (opts?.baselinePitch !== undefined) params.set("baseline_pitch", String(opts.baselinePitch))
+	return params
+}
+
+/** Poll head pose for guided live enrollment (lightweight — no JPEG). */
+export async function checkDoorbellPose(
+	step: PoseStep,
+	opts?: PoseQuery,
+): Promise<PoseCheckResult> {
+	const response = await fetch(
+		apiUrl(`/api/capture/doorbell/pose?${poseQueryParams(step, opts)}`),
+		{
+			headers: authHeaders(),
+		},
+	)
+	if (!response.ok) throw new Error(await parseError(response))
+	return response.json()
+}
+
+/** Poll head pose from a phone camera frame (uploads JPEG). */
+export async function checkPhonePose(
+	step: PoseStep,
+	frame: Blob,
+	opts?: PoseQuery,
+): Promise<PoseCheckResult> {
+	const params = poseQueryParams(step, opts)
+	params.set("mirror_yaw", "true")
+	const form = new FormData()
+	form.append("image", frame, "frame.jpg")
+
+	const response = await fetch(apiUrl(`/api/capture/phone/pose?${params}`), {
+		method: "POST",
+		headers: authHeaders(),
+		body: form,
+	})
+	if (!response.ok) throw new Error(await parseError(response))
+	return response.json()
+}
+
 export async function testRecognize(): Promise<RecognizeResult> {
 	const response = await fetch("/recognize", {
 		method: "POST",
@@ -83,25 +139,34 @@ export async function deletePerson(personId: string): Promise<void> {
 	if (!response.ok) throw new Error(await parseError(response))
 }
 
-export async function captureFromStream(name: string, label: string): Promise<CaptureResult> {
-	const form = new FormData()
-	form.append("name", name)
-	form.append("label", label)
+/** Grab a doorbell JPEG for client-side staging (no disk write). */
+export async function previewDoorbellFrame(step: PoseStep, opts?: PoseQuery): Promise<Blob> {
+	const response = await fetch(
+		apiUrl(`/api/capture/doorbell/preview?${poseQueryParams(step, opts)}`),
+		{
+			method: "POST",
+			headers: authHeaders(),
+		},
+	)
+	if (!response.ok) throw new Error(await parseError(response))
+	return response.blob()
+}
 
-	const response = await fetch(apiUrl("/api/capture/doorbell"), {
+/** Validate pose on a phone frame and return JPEG for staging. */
+export async function previewPhoneFrame(
+	step: PoseStep,
+	frame: Blob,
+	opts?: PoseQuery,
+): Promise<Blob> {
+	const params = poseQueryParams(step, opts)
+	params.set("mirror_yaw", "true")
+	const form = new FormData()
+	form.append("image", frame, "frame.jpg")
+
+	const response = await fetch(apiUrl(`/api/capture/phone/preview?${params}`), {
 		method: "POST",
 		headers: authHeaders(),
 		body: form,
-	})
-	if (!response.ok) throw new Error(await parseError(response))
-	return response.json()
-}
-
-/** Grab a doorbell JPEG for client-side staging (no disk write). */
-export async function previewDoorbellFrame(): Promise<Blob> {
-	const response = await fetch(apiUrl("/api/capture/doorbell/preview"), {
-		method: "POST",
-		headers: authHeaders(),
 	})
 	if (!response.ok) throw new Error(await parseError(response))
 	return response.blob()
@@ -111,13 +176,14 @@ export type EnrollResult = RebuildResult
 
 export async function enrollPerson(
 	name: string,
-	photos: Record<string, Blob>,
+	photos: Blob[],
+	source: EnrollSource,
 ): Promise<EnrollResult> {
 	const form = new FormData()
 	form.append("name", name)
-	for (const [label, blob] of Object.entries(photos)) {
-		form.append("labels", label)
-		form.append("images", blob, `${label}.jpg`)
+	form.append("source", source)
+	for (const blob of photos) {
+		form.append("images", blob, "photo.jpg")
 	}
 
 	const response = await fetch(apiUrl("/api/enroll"), {

@@ -1,52 +1,225 @@
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { onMount, tick } from "svelte";
 	import {
+		checkDoorbellPose,
+		checkPhonePose,
 		dataUrlToBlob,
 		deletePerson,
 		doorbellStreamUrl,
 		enrollPerson,
 		listPeople,
 		previewDoorbellFrame,
+		previewPhoneFrame,
 		scanFootage,
 		streamSnapshotUrl,
 		withCacheBust,
 		type PersonInfo,
+		type PoseStep,
 		type ScanFace,
 	} from "$lib/api";
+	import CameraSheet, { type CameraSource } from "$lib/CameraSheet.svelte";
+	import EnrollCompleteOverlay from "$lib/EnrollCompleteOverlay.svelte";
+	import FaceGuideOverlay from "$lib/FaceGuideOverlay.svelte";
+	import {
+		canSetBaseline,
+		cueDirection,
+		faceGuidesReady,
+		guideCueForStep,
+		guideCueFrom,
+		guideCueFromGuidance,
+		guideHint,
+	} from "$lib/enroll-guide";
+	import { newId } from "$lib/id";
+	import {
+		captureVideoFrame,
+		isPhoneCameraSupported,
+		queryCameraPermission,
+		startPhoneCamera,
+		stopPhoneCamera,
+	} from "$lib/phone-camera";
 
-	type Tab = "live" | "footage";
-	type Step = { id: string; label: string; hint: string };
-	type StagedPhoto = { label: string; blob: Blob; url: string };
+	const POLL_MS = 1000;
+	const STEP_TIMEOUT_MS = 45_000;
+	const OK_STREAK = 2;
+	const CAMERA_KEY = "doorman-enroll-camera";
 
-	const steps: Step[] = [
-		{ id: "front", label: "Front", hint: "Face the camera straight on" },
-		{ id: "left", label: "Left", hint: "Turn slightly to your left" },
-		{ id: "right", label: "Right", hint: "Turn slightly to your right" },
-		{ id: "door", label: "Extra", hint: "One more angle (optional)" },
+	type LiveStep = { pose: PoseStep; hint: string };
+	type StagedPhoto = { id: string; blob: Blob; url: string };
+
+	const liveSteps: LiveStep[] = [
+		{ pose: "left", hint: "Turn slightly to your left" },
+		{ pose: "right", hint: "Turn slightly to your right" },
+		{ pose: "up", hint: "Look up slightly" },
+		{ pose: "down", hint: "Look down slightly" },
+		{ pose: "center", hint: "Look straight ahead" },
 	];
 
 	type BusyAction = "" | "capture" | "enroll" | "delete";
 
-	let tab: Tab = $state("live");
+	let cameraSource = $state<CameraSource>("doorbell");
+	let cameraSheetOpen = $state(false);
 	let name = $state("");
-	let stepIndex = $state(0);
 	let busyAction = $state<BusyAction>("");
 	let message = $state("");
 	let messageKind = $state<"ok" | "warn" | "error">("ok");
-	let staged = $state<Record<string, StagedPhoto>>({});
+	let liveStaged = $state<Record<number, StagedPhoto>>({});
+	let footageStaged = $state<StagedPhoto[]>([]);
 	let enrolled = $state<PersonInfo[]>([]);
 	let pendingFaces = $state<ScanFace[]>([]);
 	let askingName = $state(false);
 	let fileInput = $state<HTMLInputElement | null>(null);
 	let nameInput = $state<HTMLInputElement | null>(null);
+	let phoneVideo = $state<HTMLVideoElement | null>(null);
+	let phoneStream: MediaStream | null = null;
+	let phoneReady = $state(false);
+	let phoneError = $state("");
+	let phoneEnableNeeded = $state(false);
 	let streamReady = $state(false);
 	let snapshotLoaded = $state(false);
 	let snapshotTick = $state(0);
+	let baselineYaw = $state<number | null>(null);
+	let baselinePitch = $state<number | null>(null);
+	let poseGuidance = $state("hold");
+	let poseHintKey = $state("hold");
+	let faceReady = $state(false);
+	let stepTimedOut = $state(false);
+	let capturing = $state(false);
+	let enrollSuccessName = $state("");
 
-	const currentStep = $derived(steps[stepIndex]);
+	let pollTimer: number | null = null;
+	let stepStartedAt = 0;
+	let okStreak = 0;
+
+	const activeLiveStepIndex = $derived.by(() => {
+		for (let index = 0; index < liveSteps.length; index += 1) {
+			if (liveStaged[index] === undefined) return index;
+		}
+		return -1;
+	});
+	const liveCaptureComplete = $derived(activeLiveStepIndex === -1);
+	const currentLiveStep = $derived(
+		liveCaptureComplete ? liveSteps[liveSteps.length - 1] : liveSteps[activeLiveStepIndex],
+	);
 	const busy = $derived(busyAction !== "");
-	const stagedCount = $derived(Object.keys(staged).length);
-	const canCapture = $derived(!busy && pendingFaces.length === 0);
+	const liveStagedCount = $derived(Object.keys(liveStaged).length);
+	const footageStagedCount = $derived(footageStaged.length);
+	const usingGuidedPhotos = $derived(liveStagedCount > 0);
+	const stagedCount = $derived(
+		usingGuidedPhotos ? liveStagedCount : footageStagedCount,
+	);
+	const previewStepIndex = $derived(
+		activeLiveStepIndex >= 0 ? activeLiveStepIndex : liveSteps.length - 1,
+	);
+	const canUpload = $derived(!busy && !capturing && pendingFaces.length === 0);
+	const showEnrollButton = $derived(footageStagedCount > 0 && liveStagedCount === 0);
+	const HOLD_STILL = "hold";
+	const usePhoneCamera = $derived(cameraSource === "phone");
+
+	const cameraButtonLabel = $derived(
+		cameraSource === "doorbell" ? "Doorbell camera" : "Phone camera",
+	);
+
+	function briefPoseHint(hint: string): string {
+		const short: Record<string, string> = {
+			"Face the camera straight on": "Face straight on",
+			"Look straight at the camera": "Look straight ahead",
+			"Turn more left": "Turn more left",
+			"A bit less left": "A bit less left",
+			"Turn more right": "Turn more right",
+			"A bit less right": "A bit less right",
+			"Look up more": "Look up more",
+			"A bit less up": "A bit less up",
+			"Look down more": "Look down more",
+			"A bit less down": "A bit less down",
+			"Try another angle": "Try another angle",
+			"Hold still — finding your face": "Hold still",
+			"Show your full face": "Show your full face",
+			"Move closer": "Move closer",
+			"Need exactly one person at the door": "One person only",
+			"Connecting to doorbell…": "Connecting…",
+		};
+		return short[hint] ?? hint;
+	}
+
+	const guidedNameStep = $derived(
+		liveCaptureComplete && liveStagedCount === liveSteps.length,
+	);
+	const showGuidedNameForm = $derived(guidedNameStep && busyAction !== "enroll");
+	const showFootageNameForm = $derived(askingName && !guidedNameStep);
+	const doneDisabled = $derived(!name.trim() || busy);
+	const enrollJustFinished = $derived(enrollSuccessName !== "");
+
+	function poseQuery() {
+		return {
+			baselineYaw: baselineYaw ?? undefined,
+			baselinePitch: baselinePitch ?? undefined,
+		};
+	}
+
+	const showLiveStream = $derived(
+		!enrollJustFinished &&
+			!liveCaptureComplete &&
+			liveStaged[activeLiveStepIndex] === undefined,
+	);
+	const cameraReady = $derived(
+		usePhoneCamera ? phoneReady && !phoneError : streamReady || snapshotLoaded,
+	);
+	const showPhoneEnableButton = $derived(
+		usePhoneCamera && showLiveStream && phoneEnableNeeded && !phoneReady && !phoneError,
+	);
+	const inGuidedCapture = $derived(
+		cameraReady &&
+			showLiveStream &&
+			!stepTimedOut &&
+			!capturing &&
+			pendingFaces.length === 0 &&
+			!liveCaptureComplete,
+	);
+	const guideCue = $derived(
+		inGuidedCapture ? guideCueFromGuidance(poseHintKey, currentLiveStep.pose) : "none",
+	);
+	const guideDirection = $derived.by(() => {
+		if (!faceReady || !inGuidedCapture) return null;
+		// Step 5: always top up-arrow — raise head to straight (not bottom down-arrow from step 4).
+		if (currentLiveStep.pose === "center") return "up";
+		if (guideCue === "none") return null;
+		return cueDirection(guideCue, currentLiveStep.pose);
+	});
+	const showGuideOverlay = $derived(guideDirection !== null);
+	const showFaceGuide = $derived(inGuidedCapture);
+	const statusLine = $derived.by(() => {
+		if (pendingFaces.length > 0) return "Tap the matching face";
+		if (busyAction === "enroll") return "Enrolling…";
+		if (usingGuidedPhotos && liveCaptureComplete) return "";
+		if (!usingGuidedPhotos && footageStagedCount > 0) {
+			return `${footageStagedCount} upload${footageStagedCount === 1 ? "" : "s"} ready — tap Enroll`;
+		}
+		if (capturing) return "Capturing…";
+		if (stepTimedOut) return "Timed out — tap Retry";
+		if (showPhoneEnableButton) return "";
+		if (usePhoneCamera && showLiveStream && !phoneReady && !phoneError) {
+			return "Starting camera…";
+		}
+		if (!usePhoneCamera && showLiveStream && !cameraReady) return "Connecting to doorbell…";
+		if (!cameraReady) return "";
+		if (inGuidedCapture && !faceReady) return "Hold still";
+		if (currentLiveStep.pose === "center" && faceReady) return "Look straight ahead";
+		if (showGuideOverlay) return guideHint(guideCue);
+		if (poseGuidance === "still") return "Hold still…";
+		if (poseGuidance !== HOLD_STILL) return briefPoseHint(poseGuidance);
+		return currentLiveStep.hint;
+	});
+	const showActionSlot = $derived(
+		enrollJustFinished ||
+			footageStagedCount === 0 ||
+			showEnrollButton ||
+			stepTimedOut ||
+			showGuidedNameForm ||
+			showFootageNameForm ||
+			(guidedNameStep && busyAction === "enroll") ||
+			showPhoneEnableButton ||
+			pendingFaces.length > 0,
+	);
 	const enrollDisabled = $derived(
 		stagedCount === 0 || busy || (askingName && !name.trim()),
 	);
@@ -61,24 +234,249 @@
 	);
 	const streamUrl = $derived(doorbellStreamUrl());
 	const snapshotUrl = $derived(withCacheBust(streamSnapshotUrl(), snapshotTick));
-	const captureLabel = $derived(
-		busyAction === "capture" ? (tab === "live" ? "Capturing…" : "Scanning…") : "Capture",
-	);
-	const footageHint = $derived(
-		pendingFaces.length > 0 ? "Tap the matching face" : "Choose a doorbell photo or clip",
-	);
-	const currentPreviewUrl = $derived(staged[currentStep.id]?.url ?? "");
+	const stagedPreviewUrl = $derived(liveStaged[previewStepIndex]?.url ?? "");
 
 	onMount(() => {
+		const saved = localStorage.getItem(CAMERA_KEY);
+		if (saved === "doorbell") {
+			cameraSource = "doorbell";
+		} else if (saved === "phone" && isPhoneCameraSupported()) {
+			cameraSource = "phone";
+		}
+
 		const snapshotTimer = window.setInterval(() => {
-			if (!streamReady) snapshotTick += 1;
+			if (cameraSource === "doorbell" && !streamReady) snapshotTick += 1;
 		}, 400);
+
 		void loadEnrolled();
 		return () => {
 			window.clearInterval(snapshotTimer);
+			stopPosePolling();
+			stopPhoneStream();
 			clearStaged();
 		};
 	});
+
+	$effect(() => {
+		if (!usePhoneCamera) {
+			stopPhoneStream();
+			phoneEnableNeeded = false;
+			return;
+		}
+		if (!phoneVideo || askingName || liveCaptureComplete || enrollJustFinished) return;
+
+		let cancelled = false;
+		phoneError = "";
+		phoneReady = false;
+		phoneEnableNeeded = false;
+
+		void (async () => {
+			const permission = await queryCameraPermission();
+			if (cancelled) return;
+
+			if (permission === "denied") {
+				phoneError =
+					"Camera access denied — allow camera in browser settings or use Doorbell";
+				return;
+			}
+
+			if (permission === "granted") {
+				await beginPhoneCamera();
+				return;
+			}
+
+			phoneEnableNeeded = true;
+		})();
+
+		return () => {
+			cancelled = true;
+			stopPhoneStream();
+		};
+	});
+
+	$effect(() => {
+		if (
+			askingName ||
+			busy ||
+			capturing ||
+			liveCaptureComplete ||
+			enrollJustFinished ||
+			pendingFaces.length > 0
+		) {
+			stopPosePolling();
+			return;
+		}
+		if (liveStaged[activeLiveStepIndex]) {
+			stopPosePolling();
+			return;
+		}
+		if (stepTimedOut) {
+			stopPosePolling();
+			return;
+		}
+		if (usePhoneCamera && (!phoneReady || phoneError)) {
+			stopPosePolling();
+			return;
+		}
+		startPosePolling();
+		return () => stopPosePolling();
+	});
+
+	$effect(() => {
+		if (!guidedNameStep || busyAction === "enroll") {
+			return;
+		}
+		askingName = true;
+		const focusFallback = window.setTimeout(() => focusNameInput(), 1900);
+		return () => window.clearTimeout(focusFallback);
+	});
+
+	function resetStepTimer() {
+		stepStartedAt = Date.now();
+		stepTimedOut = false;
+		okStreak = 0;
+		poseHintKey = HOLD_STILL;
+		poseGuidance = HOLD_STILL;
+	}
+
+	function startPosePolling() {
+		if (pollTimer !== null) return;
+		resetStepTimer();
+		pollTimer = window.setInterval(() => {
+			void pollPoseOnce();
+		}, POLL_MS);
+		void pollPoseOnce();
+	}
+
+	function stopPosePolling() {
+		if (pollTimer !== null) {
+			window.clearInterval(pollTimer);
+			pollTimer = null;
+		}
+		okStreak = 0;
+	}
+
+	function stopPhoneStream() {
+		stopPhoneCamera(phoneStream);
+		phoneStream = null;
+		phoneReady = false;
+		phoneEnableNeeded = false;
+	}
+
+	async function beginPhoneCamera() {
+		if (!phoneVideo || phoneReady) return;
+		phoneError = "";
+		try {
+			const stream = await startPhoneCamera(phoneVideo);
+			phoneStream = stream;
+			phoneReady = true;
+			phoneEnableNeeded = false;
+		} catch (err) {
+			phoneError = err instanceof Error ? err.message : String(err);
+			phoneEnableNeeded = true;
+		}
+	}
+
+	function enablePhoneCamera() {
+		void beginPhoneCamera();
+	}
+
+	function focusNameInput() {
+		void tick().then(() => {
+			requestAnimationFrame(() => {
+				nameInput?.focus({ preventScroll: true });
+			});
+		});
+	}
+
+	async function pollPoseOnce() {
+		if (capturing || stepTimedOut || liveCaptureComplete) return;
+		if (liveStaged[activeLiveStepIndex]) return;
+		const stepIndex = activeLiveStepIndex;
+		const stepPose = currentLiveStep.pose;
+		if (Date.now() - stepStartedAt > STEP_TIMEOUT_MS) {
+			stepTimedOut = true;
+			stopPosePolling();
+			poseGuidance = "Timed out — tap Retry";
+			return;
+		}
+
+		try {
+			let result;
+			if (usePhoneCamera) {
+				if (!phoneVideo || !phoneReady) {
+					poseGuidance = "Starting camera…";
+					return;
+				}
+				const frame = await captureVideoFrame(phoneVideo);
+				result = await checkPhonePose(stepPose, frame, poseQuery());
+			} else {
+				result = await checkDoorbellPose(stepPose, poseQuery());
+			}
+			if (stepIndex !== activeLiveStepIndex) return;
+
+			const raw = result.hint ?? "";
+
+			if (result.face_count > 0 && baselineYaw === null && canSetBaseline(raw)) {
+				baselineYaw = result.yaw;
+				baselinePitch = result.pitch;
+			}
+
+			if (faceGuidesReady(result)) {
+				faceReady = true;
+			}
+
+			if (!result.ok) {
+				okStreak = 0;
+				poseHintKey = raw || "Adjust pose";
+				poseGuidance = briefPoseHint(poseHintKey);
+				return;
+			}
+
+			faceReady = true;
+			okStreak += 1;
+			poseHintKey = "still";
+			poseGuidance = "still";
+			if (baselineYaw === null) {
+				baselineYaw = result.yaw;
+				baselinePitch = result.pitch;
+			}
+			if (okStreak >= OK_STREAK) {
+				await autoCaptureStep();
+			}
+		} catch (err) {
+			okStreak = 0;
+			poseGuidance = err instanceof Error ? err.message : String(err);
+		}
+	}
+
+	async function autoCaptureStep() {
+		stopPosePolling();
+		capturing = true;
+		message = "";
+		try {
+			let blob: Blob;
+			if (usePhoneCamera) {
+				if (!phoneVideo) throw new Error("Camera not ready");
+				const frame = await captureVideoFrame(phoneVideo);
+				blob = await previewPhoneFrame(currentLiveStep.pose, frame, poseQuery());
+			} else {
+				blob = await previewDoorbellFrame(currentLiveStep.pose, poseQuery());
+			}
+			stageLivePhoto(blob);
+		} catch (err) {
+			showError(err);
+			startPosePolling();
+		} finally {
+			capturing = false;
+		}
+	}
+
+	function retryCurrentStep() {
+		message = "";
+		resetStepTimer();
+		startPosePolling();
+	}
 
 	async function loadEnrolled() {
 		try {
@@ -103,41 +501,62 @@
 		messageKind = "error";
 	}
 
+	function revokePhoto(photo: StagedPhoto) {
+		URL.revokeObjectURL(photo.url);
+	}
+
 	function clearStaged() {
-		for (const photo of Object.values(staged)) {
-			URL.revokeObjectURL(photo.url);
-		}
-		staged = {};
+		for (const photo of Object.values(liveStaged)) revokePhoto(photo);
+		for (const photo of footageStaged) revokePhoto(photo);
+		liveStaged = {};
+		footageStaged = [];
+		baselineYaw = null;
+		baselinePitch = null;
+		faceReady = false;
+		poseHintKey = HOLD_STILL;
+		poseGuidance = HOLD_STILL;
 	}
 
-	function stagePhoto(label: string, blob: Blob) {
-		const existing = staged[label];
-		if (existing) URL.revokeObjectURL(existing.url);
-		staged = {
-			...staged,
-			[label]: { label, blob, url: URL.createObjectURL(blob) },
+	function stageLivePhoto(blob: Blob) {
+		const step = activeLiveStepIndex;
+		if (step < 0) return;
+		const existing = liveStaged[step];
+		if (existing) revokePhoto(existing);
+		liveStaged = {
+			...liveStaged,
+			[step]: {
+				id: newId(),
+				blob,
+				url: URL.createObjectURL(blob),
+			},
 		};
-		showOk(`Captured ${label}`);
-		if (stepIndex < steps.length - 1) stepIndex += 1;
+		resetStepTimer();
 	}
 
-	async function captureCurrent() {
-		if (!canCapture) return;
-		if (tab === "footage") {
-			fileInput?.click();
-			return;
-		}
+	function stageFootagePhoto(blob: Blob) {
+		footageStaged = [
+			...footageStaged,
+			{
+				id: newId(),
+				blob,
+				url: URL.createObjectURL(blob),
+			},
+		];
+		showOk(`Added photo ${footageStaged.length}`);
+		pendingFaces = [];
+	}
 
-		busyAction = "capture";
+	function removeFootagePhoto(id: string) {
+		const photo = footageStaged.find((entry) => entry.id === id);
+		if (photo) revokePhoto(photo);
+		footageStaged = footageStaged.filter((entry) => entry.id !== id);
+	}
+
+	function openUpload() {
+		if (!canUpload) return;
+		enrollSuccessName = "";
 		message = "";
-		try {
-			const blob = await previewDoorbellFrame();
-			stagePhoto(currentStep.id, blob);
-		} catch (err) {
-			showError(err);
-		} finally {
-			busyAction = "";
-		}
+		fileInput?.click();
 	}
 
 	async function onFootageFile(event: Event) {
@@ -156,8 +575,7 @@
 				return;
 			}
 			if (result.faces.length === 1) {
-				stagePhoto(currentStep.id, dataUrlToBlob(result.faces[0].crop));
-				pendingFaces = [];
+				stageFootagePhoto(dataUrlToBlob(result.faces[0].crop));
 				return;
 			}
 			pendingFaces = result.faces;
@@ -169,8 +587,7 @@
 	}
 
 	function pickFootageFace(face: ScanFace) {
-		stagePhoto(currentStep.id, dataUrlToBlob(face.crop));
-		pendingFaces = [];
+		stageFootagePhoto(dataUrlToBlob(face.crop));
 	}
 
 	async function submitEnroll() {
@@ -178,14 +595,17 @@
 		busyAction = "enroll";
 		message = "";
 		const person = name.trim();
-		const photos = Object.fromEntries(
-			Object.values(staged).map((photo) => [photo.label, photo.blob]),
-		);
+		const source = usingGuidedPhotos ? "live" : "footage";
+		const photos = usingGuidedPhotos
+			? liveSteps
+					.map((_, index) => liveStaged[index])
+					.filter((photo): photo is StagedPhoto => photo !== undefined)
+					.map((photo) => photo.blob)
+			: footageStaged.map((photo) => photo.blob);
 		try {
-			const result = await enrollPerson(person, photos);
-			showOk(result.message);
+			await enrollPerson(person, photos, source);
+			enrollSuccessName = person;
 			clearStaged();
-			stepIndex = 0;
 			name = "";
 			askingName = false;
 			enrolled = await listPeople();
@@ -201,10 +621,26 @@
 		if (!askingName) {
 			askingName = true;
 			message = "";
-			queueMicrotask(() => nameInput?.focus());
+			void tick().then(() => focusNameInput());
 			return;
 		}
 		void submitEnroll();
+	}
+
+	function handleDoneClick() {
+		if (doneDisabled) return;
+		void submitEnroll();
+	}
+
+	function startAnotherEnroll() {
+		enrollSuccessName = "";
+		message = "";
+		stepTimedOut = false;
+		faceReady = false;
+		poseHintKey = HOLD_STILL;
+		poseGuidance = HOLD_STILL;
+		baselineYaw = null;
+		baselinePitch = null;
 	}
 
 	async function removeEnrolled(person: PersonInfo) {
@@ -220,121 +656,321 @@
 			busyAction = "";
 		}
 	}
+
+	function switchCameraSource(next: CameraSource) {
+		if (next === cameraSource) return;
+		if (next === "phone" && !isPhoneCameraSupported()) return;
+		cameraSource = next;
+		localStorage.setItem(CAMERA_KEY, next);
+		message = "";
+		stopPosePolling();
+		stepTimedOut = false;
+		faceReady = false;
+		poseHintKey = HOLD_STILL;
+		poseGuidance = HOLD_STILL;
+		baselineYaw = null;
+		baselinePitch = null;
+		for (const photo of Object.values(liveStaged)) revokePhoto(photo);
+		liveStaged = {};
+		enrollSuccessName = "";
+	}
 </script>
 
-<div class="app">
-	<header>
-		<h1>Enroll</h1>
+<CameraSheet
+	open={cameraSheetOpen}
+	current={cameraSource}
+	onselect={switchCameraSource}
+	onclose={() => (cameraSheetOpen = false)}
+/>
+
+<div class="mx-auto max-w-xl px-4 pb-8 pt-4 text-lg">
+	<header class="mb-6 text-center">
+		<h1 class="text-2xl font-semibold">Add your face</h1>
 	</header>
 
-	<div class="card">
-		<div class="tabs">
-			<button type="button" class:active={tab === "live"} onclick={() => (tab = "live")}>
-				Live
+	<div class="rounded-2xl border border-border bg-surface p-4">
+		<div class="mb-4 flex gap-2">
+			<button
+				type="button"
+				class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border border-border bg-bg px-3 py-2.5 text-left font-medium transition-colors hover:border-accent/50"
+				onclick={() => (cameraSheetOpen = true)}
+			>
+				<span class="truncate">{cameraButtonLabel}</span>
+				<span class="shrink-0 text-muted" aria-hidden="true">▾</span>
 			</button>
-			<button type="button" class:active={tab === "footage"} onclick={() => (tab = "footage")}>
-				Footage
+			<button
+				type="button"
+				class="shrink-0 rounded-xl border border-border bg-bg px-4 py-2.5 font-medium text-text transition-colors hover:border-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
+				disabled={!canUpload}
+				onclick={openUpload}
+			>
+				{busyAction === "capture" ? "…" : "Upload"}
 			</button>
 		</div>
-
-		<div class="steps">
-			{#each steps as step, index}
-				<button
-					type="button"
-					class="step"
-					class:active={index === stepIndex}
-					class:done={staged[step.id]}
-					onclick={() => (stepIndex = index)}
-				>
-					{step.label}
-				</button>
-			{/each}
-		</div>
-
-		<p class="hint">
-			{tab === "live" ? currentStep.hint : footageHint}
-		</p>
 
 		<input
 			bind:this={fileInput}
-			class="file-input-hidden"
+			class="sr-only"
 			type="file"
 			accept="image/*,video/*"
 			onchange={onFootageFile}
 		/>
 
-		<div class="preview">
-			{#if tab === "live"}
-				{#if currentPreviewUrl}
-					<img src={currentPreviewUrl} alt="Captured {currentStep.label}" />
-				{:else if !streamReady && !snapshotLoaded}
-					<p class="preview-placeholder">Connecting to doorbell…</p>
-				{/if}
-				{#if !currentPreviewUrl}
-					{#if streamReady}
-						<img src={streamUrl} alt="Doorbell camera" />
-					{:else}
-						<img
-							src={snapshotUrl}
-							alt="Doorbell camera"
-							onload={() => (snapshotLoaded = true)}
-							onerror={() => (snapshotLoaded = false)}
-						/>
-						<img
-							class="stream-preload"
-							src={streamUrl}
-							alt=""
-							onload={() => (streamReady = true)}
-						/>
+		<div
+			class="relative mx-auto aspect-square w-full max-w-md overflow-hidden rounded-full bg-black ring-1 ring-white/10"
+		>
+			{#if enrollJustFinished}
+				<div class="enroll-success">
+					<div class="enroll-success-tick" aria-hidden="true">
+						<svg
+							class="h-10 w-10"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M5 13l4 4L19 7" />
+						</svg>
+					</div>
+					<div class="enroll-success-text">
+						<p class="text-xl font-semibold text-text">Added {enrollSuccessName}</p>
+						<p class="mt-2 text-muted">You're all set.</p>
+					</div>
+				</div>
+			{:else if showLiveStream}
+				{#if usePhoneCamera}
+					<video
+						bind:this={phoneVideo}
+						class="absolute inset-0 h-full w-full -scale-x-100 object-cover"
+						playsinline
+						muted
+					></video>
+					{#if phoneError}
+						<div class="absolute inset-0 flex items-center justify-center bg-black/80 p-4">
+							<p class="text-center text-danger">{phoneError}</p>
+						</div>
+					{:else if phoneEnableNeeded}
+						<div class="absolute inset-0 flex items-center justify-center bg-black">
+							<p class="px-4 text-center text-muted">Camera access needed</p>
+						</div>
+					{:else if !phoneReady}
+						<div class="absolute inset-0 flex items-center justify-center bg-black">
+							<p class="px-4 text-center text-muted">Starting camera…</p>
+						</div>
 					{/if}
+				{:else if streamReady}
+					<img
+						src={streamUrl}
+						alt="Doorbell camera"
+						class="absolute inset-0 h-full w-full object-cover"
+					/>
+				{:else}
+					<img
+						src={snapshotUrl}
+						alt=""
+						class="absolute inset-0 h-full w-full object-cover transition-opacity duration-300 {snapshotLoaded
+							? 'opacity-100'
+							: 'opacity-0'}"
+						onload={() => (snapshotLoaded = true)}
+						onerror={() => (snapshotLoaded = false)}
+					/>
+					{#if !streamReady && !snapshotLoaded}
+						<div class="absolute inset-0 flex items-center justify-center bg-black">
+							<p class="px-4 text-center text-muted">Connecting to doorbell…</p>
+						</div>
+					{:else if !streamReady}
+						<div
+							class="absolute inset-x-0 bottom-0 bg-black/70 px-3 py-2 text-center text-muted"
+						>
+							Starting live stream…
+						</div>
+					{/if}
+					<img class="sr-only" src={streamUrl} alt="" onload={() => (streamReady = true)} />
 				{/if}
-			{:else if pendingFaces.length > 0}
-				<div class="face-grid face-grid--preview">
+			{:else if stagedPreviewUrl}
+				<img
+					src={stagedPreviewUrl}
+					alt="Captured step {previewStepIndex + 1}"
+					class="absolute inset-0 h-full w-full object-cover {usePhoneCamera ? '-scale-x-100' : ''}"
+				/>
+			{/if}
+
+			{#if pendingFaces.length > 0}
+				<div
+					class="absolute inset-0 z-10 grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] content-center gap-2 bg-black/90 p-2"
+				>
 					{#each pendingFaces as face}
-						<button type="button" disabled={busy} onclick={() => pickFootageFace(face)}>
-							<img src={face.thumbnail} alt="Detected face" />
+						<button
+							type="button"
+							class="overflow-hidden rounded-xl border-2 border-border p-0 disabled:opacity-50"
+							disabled={busy}
+							onclick={() => pickFootageFace(face)}
+						>
+							<img src={face.thumbnail} alt="Detected face" class="aspect-square w-full object-cover" />
 						</button>
 					{/each}
 				</div>
-			{:else if currentPreviewUrl}
-				<img src={currentPreviewUrl} alt="Captured {currentStep.label}" />
-			{:else}
-				<p class="preview-placeholder">Tap Capture below</p>
+			{/if}
+
+			{#if showFaceGuide && guideDirection}
+				{#key activeLiveStepIndex}
+					<FaceGuideOverlay direction={guideDirection} />
+				{/key}
+			{/if}
+
+			{#if liveCaptureComplete && liveStagedCount === liveSteps.length}
+				<EnrollCompleteOverlay onfinished={focusNameInput} />
 			{/if}
 		</div>
 
-		<button class="capture-btn" disabled={!canCapture} onclick={captureCurrent}>
-			{captureLabel}
-		</button>
-
-		{#if askingName}
-			<input
-				id="name"
-				class="enroll-name-input"
-				bind:this={nameInput}
-				bind:value={name}
-				placeholder="Who is this?"
-				autocomplete="off"
-			/>
+		{#if footageStaged.length > 0}
+			<div class="mt-3 flex flex-wrap gap-2">
+				{#each footageStaged as photo, index}
+					<div class="relative">
+						<img
+							src={photo.url}
+							alt="Upload {index + 1}"
+							class="h-16 w-16 rounded-lg border border-border object-cover"
+						/>
+						<button
+							type="button"
+							class="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full bg-danger text-white"
+							disabled={busy}
+							onclick={() => removeFootagePhoto(photo.id)}
+							aria-label="Remove upload {index + 1}"
+						>
+							×
+						</button>
+					</div>
+				{/each}
+			</div>
 		{/if}
 
-		<button class="capture-btn enroll-btn" disabled={enrollDisabled} onclick={handleEnrollClick}>
-			{enrollLabel}
-		</button>
+		{#if showActionSlot}
+			<div class="action-slot mt-4">
+				{#if enrollJustFinished}
+					<button
+						type="button"
+						class="action-slot-control bg-accent font-medium text-white hover:bg-accent-hover"
+						onclick={startAnotherEnroll}
+					>
+						Add another
+					</button>
+				{:else if stepTimedOut}
+					<button
+						type="button"
+						class="action-slot-control bg-accent font-medium text-white hover:bg-accent-hover"
+						onclick={retryCurrentStep}
+					>
+						Retry step
+					</button>
+				{:else if showGuidedNameForm}
+					<div class="action-slot-row">
+						<input
+							id="name"
+							class="action-slot-control action-slot-input border border-border bg-bg text-text outline-none focus:border-accent"
+							bind:this={nameInput}
+							bind:value={name}
+							placeholder="Who is this?"
+							autocomplete="name"
+							enterkeyhint="done"
+							onkeydown={(event) => {
+								if (event.key === "Enter" && !doneDisabled) {
+									event.preventDefault();
+									handleDoneClick();
+								}
+							}}
+						/>
+						<button
+							type="button"
+							class="action-slot-control action-slot-done bg-ok font-medium text-bg hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+							disabled={doneDisabled}
+							onclick={handleDoneClick}
+						>
+							Done
+						</button>
+					</div>
+				{:else if guidedNameStep && busyAction === "enroll"}
+					<p class="action-slot-hint">Enrolling…</p>
+				{:else if showFootageNameForm}
+					<div class="action-slot-row">
+						<input
+							id="name"
+							class="action-slot-control action-slot-input border border-border bg-bg text-text outline-none focus:border-accent"
+							bind:this={nameInput}
+							bind:value={name}
+							placeholder="Who is this?"
+							autocomplete="name"
+							enterkeyhint="done"
+							onkeydown={(event) => {
+								if (event.key === "Enter" && !enrollDisabled) {
+									event.preventDefault();
+									void submitEnroll();
+								}
+							}}
+						/>
+						<button
+							type="button"
+							class="action-slot-control action-slot-done bg-ok font-medium text-bg hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+							disabled={enrollDisabled}
+							onclick={handleEnrollClick}
+						>
+							{enrollLabel}
+						</button>
+					</div>
+				{:else if showEnrollButton}
+					<button
+						type="button"
+						class="action-slot-control bg-ok font-medium text-bg hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+						disabled={enrollDisabled}
+						onclick={handleEnrollClick}
+					>
+						{enrollLabel}
+					</button>
+				{:else if showPhoneEnableButton}
+					<button
+						type="button"
+						class="action-slot-control bg-accent font-medium text-white hover:bg-accent-hover"
+						onclick={enablePhoneCamera}
+					>
+						Enable camera
+					</button>
+				{:else}
+					<p class="action-slot-hint">
+						{statusLine}
+					</p>
+				{/if}
+			</div>
+		{/if}
 
 		{#if message}
-			<div class="message {messageKind}">{message}</div>
+			<div
+				class="mt-3 rounded-xl px-3 py-2.5 {messageKind === 'ok'
+					? 'bg-ok/20 text-ok'
+					: messageKind === 'warn'
+						? 'bg-warn/20 text-warn'
+						: 'bg-danger/20 text-danger'}"
+			>
+				{message}
+			</div>
 		{/if}
 	</div>
 
 	{#if enrolled.length > 0}
-		<div class="card card--compact">
-			<p class="section-label">Enrolled</p>
-			<ul class="people-list">
+		<div class="mt-4 rounded-2xl border border-border bg-surface px-4 py-3">
+			<p class="mb-2 text-muted">Enrolled</p>
+			<ul class="divide-y divide-border">
 				{#each enrolled as person}
-					<li>
+					<li class="flex items-center justify-between gap-3 py-2.5">
 						<span>{person.name}</span>
-						<button class="secondary" disabled={busy} onclick={() => removeEnrolled(person)}>
+						<button
+							type="button"
+							class="rounded-xl border border-border bg-transparent px-3 py-1.5 text-text hover:bg-bg disabled:opacity-50"
+							disabled={busy}
+							onclick={() => removeEnrolled(person)}
+						>
 							Remove
 						</button>
 					</li>
@@ -343,3 +979,87 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	.action-slot {
+		min-height: 3.25rem;
+	}
+
+	.action-slot-hint,
+	.action-slot-control {
+		box-sizing: border-box;
+		width: 100%;
+		min-height: 3.25rem;
+		border-radius: 0.75rem;
+		padding-inline: 1rem;
+	}
+
+	.action-slot-hint {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0;
+		text-align: center;
+		font-weight: 500;
+		line-height: 1.35;
+		color: var(--color-text);
+	}
+
+	button.action-slot-control {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding-block: 0;
+	}
+
+	input.action-slot-control {
+		display: block;
+		padding-block: 0.625rem;
+	}
+
+	.action-slot-row {
+		display: flex;
+		gap: 0.5rem;
+		width: 100%;
+	}
+
+	.action-slot-input {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.action-slot-done {
+		flex-shrink: 0;
+		width: auto;
+		min-width: 5.5rem;
+		padding-inline: 1.25rem;
+	}
+
+	.enroll-success {
+		position: absolute;
+		inset: 0;
+	}
+
+	.enroll-success-tick {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		display: flex;
+		height: 5rem;
+		width: 5rem;
+		align-items: center;
+		justify-content: center;
+		border-radius: 9999px;
+		background: rgb(62 207 142 / 0.2);
+		color: var(--color-ok);
+		transform: translate(-50%, -50%);
+	}
+
+	.enroll-success-text {
+		position: absolute;
+		inset-inline: 0;
+		top: calc(50% + 3.75rem);
+		padding-inline: 1.5rem;
+		text-align: center;
+	}
+</style>

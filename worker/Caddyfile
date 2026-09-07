@@ -1,0 +1,14 @@
+# HTTPS front for /enroll — static cert with LAN IP in SAN (IP clients often send no SNI).
+# Generate certs on homelab: ./scripts/generate-enroll-tls.sh
+
+{
+	auto_https off
+	servers :443 {
+		protocols h1 h2
+	}
+}
+
+:443 {
+	tls /certs/enroll.crt /certs/enroll.key
+	reverse_proxy worker:8768
+}
