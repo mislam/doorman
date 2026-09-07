@@ -6,17 +6,34 @@
 	type Props = {
 		open: boolean;
 		current: CameraSource;
+		uploadActive?: boolean;
+		uploadDisabled?: boolean;
 		onselect: (source: CameraSource) => void;
+		onupload: () => void;
 		onclose: () => void;
 	};
 
-	let { open, current, onselect, onclose }: Props = $props();
+	let {
+		open,
+		current,
+		uploadActive = false,
+		uploadDisabled = false,
+		onselect,
+		onupload,
+		onclose,
+	}: Props = $props();
 
 	const phoneAvailable = isPhoneCameraSupported();
 
 	function pick(source: CameraSource) {
 		if (source === "phone" && !phoneAvailable) return;
 		onselect(source);
+		onclose();
+	}
+
+	function pickUpload() {
+		if (uploadDisabled) return;
+		onupload();
 		onclose();
 	}
 </script>
@@ -31,9 +48,9 @@
 	<div
 		class="fixed inset-x-0 bottom-0 z-50 mx-auto max-w-xl rounded-t-2xl border border-border bg-surface px-4 pb-6 pt-3 shadow-xl"
 		role="dialog"
-		aria-label="Choose camera"
+		aria-label="Choose source"
 	>
-		<p class="mb-3 text-center font-medium text-muted">Choose camera</p>
+		<p class="mb-3 text-center font-medium text-muted">Choose source</p>
 		<div class="flex flex-col gap-2">
 			<button
 				type="button"
@@ -59,9 +76,20 @@
 					{#if phoneAvailable}
 						Easier solo enroll — add doorbell photos later
 					{:else}
-						Needs HTTPS — use Upload for phone photos on this network
+						Needs HTTPS on this network
 					{/if}
 				</span>
+			</button>
+			<button
+				type="button"
+				class="rounded-xl px-4 py-3.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 {uploadActive
+					? 'bg-accent/15 ring-1 ring-accent'
+					: 'bg-bg hover:bg-bg/80'}"
+				disabled={uploadDisabled}
+				onclick={pickUpload}
+			>
+				<span class="block font-medium text-text">Upload</span>
+				<span class="mt-0.5 block text-muted">Photos or clips from your library</span>
 			</button>
 			<button
 				type="button"

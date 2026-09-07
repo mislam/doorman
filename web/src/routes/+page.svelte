@@ -115,10 +115,6 @@
 	const HOLD_STILL = "hold";
 	const usePhoneCamera = $derived(cameraSource === "phone");
 
-	const cameraButtonLabel = $derived(
-		cameraSource === "doorbell" ? "Doorbell camera" : "Phone camera",
-	);
-
 	function briefPoseHint(hint: string): string {
 		const short: Record<string, string> = {
 			"Face the camera straight on": "Face straight on",
@@ -590,11 +586,24 @@
 		stageFootagePhoto(dataUrlToBlob(face.crop));
 	}
 
+	function findEnrolledMatch(typed: string): PersonInfo | undefined {
+		const key = typed.trim().toLowerCase();
+		return enrolled.find((person) => person.name.toLowerCase() === key);
+	}
+
 	async function submitEnroll() {
 		if (enrollDisabled || !name.trim()) return;
+		const typed = name.trim();
+		const existing = findEnrolledMatch(typed);
+		if (existing) {
+			const confirmed = confirm(
+				`Update ${existing.name}? This replaces their enrollment photos.`,
+			);
+			if (!confirmed) return;
+		}
 		busyAction = "enroll";
 		message = "";
-		const person = name.trim();
+		const enrollName = existing?.name ?? typed;
 		const source = usingGuidedPhotos ? "live" : "footage";
 		const photos = usingGuidedPhotos
 			? liveSteps
@@ -603,8 +612,8 @@
 					.map((photo) => photo.blob)
 			: footageStaged.map((photo) => photo.blob);
 		try {
-			await enrollPerson(person, photos, source);
-			enrollSuccessName = person;
+			await enrollPerson(enrollName, photos, source, { replace: Boolean(existing) });
+			enrollSuccessName = enrollName;
 			clearStaged();
 			name = "";
 			askingName = false;
@@ -679,35 +688,32 @@
 <CameraSheet
 	open={cameraSheetOpen}
 	current={cameraSource}
+	uploadActive={footageStagedCount > 0 && liveStagedCount === 0}
+	uploadDisabled={!canUpload}
 	onselect={switchCameraSource}
+	onupload={openUpload}
 	onclose={() => (cameraSheetOpen = false)}
 />
 
-<div class="mx-auto max-w-xl px-4 pb-8 pt-4 text-lg">
-	<header class="mb-6 text-center">
+<div class="mx-auto max-w-xl pb-8">
+	<header class="relative flex items-center justify-center px-4 pb-5 pt-6">
 		<h1 class="text-2xl font-semibold">Add your face</h1>
+		<button
+			type="button"
+			class="absolute right-4 flex h-11 w-11 items-center justify-center text-text transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+			disabled={busy && busyAction === "capture"}
+			aria-label="Choose source"
+			onclick={() => (cameraSheetOpen = true)}
+		>
+			<svg class="h-8 w-8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+				<path
+					d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"
+				/>
+			</svg>
+		</button>
 	</header>
 
-	<div class="rounded-2xl border border-border bg-surface p-4">
-		<div class="mb-4 flex gap-2">
-			<button
-				type="button"
-				class="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border border-border bg-bg px-3 py-2.5 text-left font-medium transition-colors hover:border-accent/50"
-				onclick={() => (cameraSheetOpen = true)}
-			>
-				<span class="truncate">{cameraButtonLabel}</span>
-				<span class="shrink-0 text-muted" aria-hidden="true">▾</span>
-			</button>
-			<button
-				type="button"
-				class="shrink-0 rounded-xl border border-border bg-bg px-4 py-2.5 font-medium text-text transition-colors hover:border-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
-				disabled={!canUpload}
-				onclick={openUpload}
-			>
-				{busyAction === "capture" ? "…" : "Upload"}
-			</button>
-		</div>
-
+	<div class="px-4">
 		<input
 			bind:this={fileInput}
 			class="sr-only"
@@ -717,7 +723,7 @@
 		/>
 
 		<div
-			class="relative mx-auto aspect-square w-full max-w-md overflow-hidden rounded-full bg-black ring-1 ring-white/10"
+			class="relative mx-auto mt-6 mb-6 aspect-square w-full overflow-hidden rounded-full bg-black ring-1 ring-white/10"
 		>
 			{#if enrollJustFinished}
 				<div class="enroll-success">
@@ -826,7 +832,7 @@
 		</div>
 
 		{#if footageStaged.length > 0}
-			<div class="mt-3 flex flex-wrap gap-2">
+			<div class="mb-4 flex flex-wrap gap-2">
 				{#each footageStaged as photo, index}
 					<div class="relative">
 						<img
@@ -849,7 +855,7 @@
 		{/if}
 
 		{#if showActionSlot}
-			<div class="action-slot mt-4">
+			<div class="action-slot">
 				{#if enrollJustFinished}
 					<button
 						type="button"
@@ -956,10 +962,9 @@
 				{message}
 			</div>
 		{/if}
-	</div>
 
-	{#if enrolled.length > 0}
-		<div class="mt-4 rounded-2xl border border-border bg-surface px-4 py-3">
+		{#if enrolled.length > 0}
+		<div class="mt-8 rounded-2xl border border-border bg-surface px-4 py-3">
 			<p class="mb-2 text-muted">Enrolled</p>
 			<ul class="divide-y divide-border">
 				{#each enrolled as person}
@@ -977,7 +982,8 @@
 				{/each}
 			</ul>
 		</div>
-	{/if}
+		{/if}
+	</div>
 </div>
 
 <style>

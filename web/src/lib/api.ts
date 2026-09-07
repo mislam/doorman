@@ -178,10 +178,12 @@ export async function enrollPerson(
 	name: string,
 	photos: Blob[],
 	source: EnrollSource,
+	opts?: { replace?: boolean },
 ): Promise<EnrollResult> {
 	const form = new FormData()
 	form.append("name", name)
 	form.append("source", source)
+	form.append("replace", opts?.replace ? "true" : "false")
 	for (const blob of photos) {
 		form.append("images", blob, "photo.jpg")
 	}

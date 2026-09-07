@@ -375,6 +375,91 @@ def test_enroll_person_saves_and_rebuilds(tmp_path: Path) -> None:
 	assert len(list(photos_dir(db_dir).glob("*.jpg"))) == 2
 
 
+def test_enroll_replace_requires_confirm_flag(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	db_dir = settings.db_path()
+	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+
+	embedding = np.array([1.0, 0.0], dtype=np.float32)
+	mock_app = MagicMock()
+	mock_app.get.return_value = [SimpleNamespace(det_score=0.9, normed_embedding=embedding)]
+
+	with (
+		patch("main.warmup_face_app"),
+		patch("enroll.create_face_app", return_value=mock_app),
+		patch("enroll.cv2.imread", return_value=image),
+	):
+		first = client.post(
+			"/enroll/api/enroll",
+			headers=_auth_headers(),
+			data={"name": "Alice", "source": "live"},
+			files=[("images", ("one.jpg", BytesIO(encoded.tobytes()), "image/jpeg"))],
+		)
+		assert first.status_code == 200
+
+		conflict = client.post(
+			"/enroll/api/enroll",
+			headers=_auth_headers(),
+			data={"name": "alice", "source": "live", "replace": "false"},
+			files=[("images", ("two.jpg", BytesIO(encoded.tobytes()), "image/jpeg"))],
+		)
+
+	assert conflict.status_code == 409
+	store = load_store(db_dir)
+	assert len(store.people) == 1
+	assert len(store.people[0].photos) == 1
+	assert store.people[0].name == "Alice"
+
+
+def test_enroll_replace_clears_old_photos(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	db_dir = settings.db_path()
+	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+
+	embedding = np.array([1.0, 0.0], dtype=np.float32)
+	mock_app = MagicMock()
+	mock_app.get.return_value = [SimpleNamespace(det_score=0.9, normed_embedding=embedding)]
+
+	with (
+		patch("main.warmup_face_app"),
+		patch("enroll.create_face_app", return_value=mock_app),
+		patch("enroll.cv2.imread", return_value=image),
+	):
+		first = client.post(
+			"/enroll/api/enroll",
+			headers=_auth_headers(),
+			data={"name": "Alice", "source": "live"},
+			files=[
+				("images", ("one.jpg", BytesIO(encoded.tobytes()), "image/jpeg")),
+				("images", ("two.jpg", BytesIO(encoded.tobytes()), "image/jpeg")),
+			],
+		)
+		assert first.status_code == 200
+		old_files = {path.name for path in photos_dir(db_dir).glob("*.jpg")}
+		assert len(old_files) == 2
+
+		replaced = client.post(
+			"/enroll/api/enroll",
+			headers=_auth_headers(),
+			data={"name": "alice", "source": "live", "replace": "true"},
+			files=[("images", ("three.jpg", BytesIO(encoded.tobytes()), "image/jpeg"))],
+		)
+
+	assert replaced.status_code == 200
+	store = load_store(db_dir)
+	assert len(store.people) == 1
+	assert store.people[0].name == "Alice"
+	assert len(store.people[0].photos) == 1
+	assert store.people[0].photos[0].label == "photo-1"
+	new_files = {path.name for path in photos_dir(db_dir).glob("*.jpg")}
+	assert len(new_files) == 1
+	assert new_files.isdisjoint(old_files)
+
+
 def test_enroll_footage_uses_footage_labels(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)

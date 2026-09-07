@@ -46,9 +46,10 @@ homelab `.env`. Regenerate after an IP change: delete `~/doorman/certs/` and red
 ### Enroll
 
 1. Open `https://192.168.x.x:8768/enroll` on your phone or laptop
-2. Tap **Doorbell camera** (or **Phone** after trusting the CA) to pick guided capture source
-3. Follow the pose prompts, or tap **Upload** for photos/clips from your library
-4. Enter **Name** when prompted and press **Return** — enrollment saves automatically
+2. Tap the **camera icon** (top right) and choose **Doorbell**, **Phone**, or **Upload**
+3. Follow the pose prompts for live capture, or pick photos/clips from your library
+4. Enter **Name**, tap **Done** — if that name is already enrolled, confirm to **replace** their
+   photos
 
 Use **doorbell-domain** photos when possible (same camera and lighting as real rings). **Upload**
 works on HTTPS too. **Phone** live camera needs the trusted CA (see above).

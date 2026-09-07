@@ -120,8 +120,9 @@ def find_person_by_id(store: FaceStore, person_id: str) -> PersonRecord | None:
 
 def find_person_by_name(store: FaceStore, name: str) -> PersonRecord | None:
 	display_name = validate_display_name(name)
+	key = display_name.casefold()
 	for person in store.people:
-		if person.name == display_name:
+		if person.name.casefold() == key:
 			return person
 	return None
 
@@ -161,16 +162,21 @@ def add_photo_from_file(
 	return register_photo(person, label, dest)
 
 
+def clear_person_photos(store: FaceStore, db_dir: Path, person: PersonRecord) -> None:
+	"""Remove all photo files and manifest entries for *person* (person record stays)."""
+	photo_root = photos_dir(db_dir)
+	for photo in person.photos:
+		(photo_root / photo.file).unlink(missing_ok=True)
+	person.photos.clear()
+
+
 def delete_person(store: FaceStore, db_dir: Path, person_id: str) -> PersonRecord:
 	person = find_person_by_id(store, person_id)
 	if person is None:
 		msg = "Person not found"
 		raise KeyError(msg)
 
-	photo_root = photos_dir(db_dir)
-	for photo in person.photos:
-		(photo_root / photo.file).unlink(missing_ok=True)
-
+	clear_person_photos(store, db_dir, person)
 	store.people = [entry for entry in store.people if entry.id != person_id]
 	return person
 

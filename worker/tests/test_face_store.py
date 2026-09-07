@@ -8,6 +8,7 @@ import pytest
 
 from face_store import (
 	add_photo_from_file,
+	clear_person_photos,
 	find_or_create_person,
 	find_person_by_name,
 	iter_enrollment_photos,
@@ -53,7 +54,25 @@ def test_find_person_by_name(tmp_path: Path) -> None:
 
 	reloaded = load_store(db_dir)
 	assert find_person_by_name(reloaded, "Alice") is not None
+	assert find_person_by_name(reloaded, "alice") is not None
 	assert find_person_by_name(reloaded, "Bob") is None
+
+
+def test_clear_person_photos(tmp_path: Path) -> None:
+	db_dir = tmp_path / "db"
+	store = load_store(db_dir)
+	person = find_or_create_person(store, "Alice")
+	source = tmp_path / "crop.jpg"
+	source.write_bytes(b"jpeg")
+	add_photo_from_file(store, db_dir, person=person, label="front", source=source)
+	save_store(store, db_dir)
+
+	clear_person_photos(store, db_dir, person)
+	save_store(store, db_dir)
+
+	assert person.photos == []
+	assert list(photos_dir(db_dir).glob("*.jpg")) == []
+	assert find_person_by_name(load_store(db_dir), "Alice") is not None
 
 
 def test_iter_enrollment_photos(tmp_path: Path) -> None:

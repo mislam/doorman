@@ -22,7 +22,9 @@ from enroll_pose import PoseStep, adjust_yaw, enrollment_hint, read_pose
 from face_store import (
 	PersonRecord,
 	PhotoRecord,
+	clear_person_photos,
 	find_or_create_person,
+	find_person_by_name,
 	load_store,
 	new_photo_path,
 	register_photo,
@@ -242,6 +244,10 @@ def _normalize_enroll_source(source: str) -> str:
 			detail=f"source must be {ENROLL_SOURCE_LIVE} or {ENROLL_SOURCE_FOOTAGE}",
 		)
 	return normalized
+
+
+def _parse_replace_flag(value: str) -> bool:
+	return value.strip().lower() in {"1", "true", "yes"}
 
 
 def _collect_faces_from_frame(
@@ -763,10 +769,23 @@ def _save_enrollment_images(
 	images: list[NDArray[np.uint8]],
 	*,
 	source: str,
+	replace: bool,
 ) -> int:
 	faces_dir = _db_dir(settings)
 	store = load_store(faces_dir)
-	person = find_or_create_person(store, display_name)
+	existing = find_person_by_name(store, display_name)
+	if existing is not None:
+		if existing.photos and not replace:
+			raise HTTPException(
+				status_code=409,
+				detail=f"{existing.name} is already enrolled — confirm to replace their photos",
+			)
+		if existing.photos:
+			clear_person_photos(store, faces_dir, existing)
+		person = existing
+	else:
+		person = find_or_create_person(store, display_name)
+
 	label_fn = _next_footage_label if source == ENROLL_SOURCE_FOOTAGE else _next_photo_label
 
 	for frame in images:
@@ -787,10 +806,12 @@ async def enroll_person(
 	name: Annotated[str, Form()],
 	images: Annotated[list[UploadFile], File()],
 	source: Annotated[str, Form()] = ENROLL_SOURCE_LIVE,
+	replace: Annotated[str, Form()] = "false",
 ) -> RebuildResponse:
 	"""Save staged photos from the browser, then rebuild gallery.pkl."""
 	display_name = _validate_display_name(name)
 	enroll_source = _normalize_enroll_source(source)
+	replace_flag = _parse_replace_flag(replace)
 	if not images:
 		raise HTTPException(status_code=400, detail="Add at least one photo")
 
@@ -801,7 +822,13 @@ async def enroll_person(
 			raise HTTPException(status_code=400, detail="Empty image")
 		decoded.append(_decode_image(data))
 
-	_save_enrollment_images(settings, display_name, decoded, source=enroll_source)
+	_save_enrollment_images(
+		settings,
+		display_name,
+		decoded,
+		source=enroll_source,
+		replace=replace_flag,
+	)
 	return rebuild_gallery(settings)
 
 
