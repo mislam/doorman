@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+import cv2
 import numpy as np
 
 PoseStep = Literal["center", "left", "right", "up", "down"]
@@ -24,6 +25,13 @@ ENROLL_BBOX_ASPECT_MAX = 2.2
 ENROLL_MIN_FEATURE_SPAN_RATIO = 0.48
 ENROLL_BBOX_LANDMARK_INSET = 0.18
 ENROLL_MIN_LANDMARK_RATIO = 0.20
+
+# Scene quality — lighting, sharpness, and background clutter (needs the full frame).
+ENROLL_MIN_FACE_LUMA = 52.0
+ENROLL_MIN_SHARPNESS = 45.0
+ENROLL_BG_RING_PAD_FRAC = 0.45
+ENROLL_SOBEL_THRESHOLD = 35.0
+ENROLL_MAX_BG_EDGE_RATIO = 0.17
 
 
 def read_pose(face: Any) -> tuple[float, float, float]:
@@ -228,6 +236,75 @@ def face_quality_hint(
 	return None
 
 
+def _clip_face_bbox(face: Any, frame_h: int, frame_w: int) -> tuple[int, int, int, int]:
+	bbox = np.asarray(getattr(face, "bbox", None), dtype=float)
+	if bbox.shape != (4,):
+		return 0, 0, 0, 0
+	x1, y1, x2, y2 = bbox
+	return (
+		max(0, int(x1)),
+		max(0, int(y1)),
+		min(frame_w, int(x2)),
+		min(frame_h, int(y2)),
+	)
+
+
+def _background_edge_ratio(gray: np.ndarray, x1: int, y1: int, x2: int, y2: int) -> float:
+	bw = x2 - x1
+	bh = y2 - y1
+	if bw < 8 or bh < 8:
+		return 0.0
+
+	h, w = gray.shape
+	pad = int(max(bw, bh) * ENROLL_BG_RING_PAD_FRAC)
+	ox1 = max(0, x1 - pad)
+	oy1 = max(0, y1 - pad)
+	ox2 = min(w, x2 + pad)
+	oy2 = min(h, y2 + pad)
+
+	sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+	sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+	mag = np.hypot(sobelx, sobely)
+
+	mask = np.zeros(gray.shape, dtype=bool)
+	mask[oy1:oy2, ox1:ox2] = True
+	mask[y1:y2, x1:x2] = False
+
+	bg_mag = mag[mask]
+	if bg_mag.size < 64:
+		return 0.0
+	return float(np.sum(bg_mag > ENROLL_SOBEL_THRESHOLD)) / float(bg_mag.size)
+
+
+def face_scene_hint(face: Any, frame: np.ndarray) -> str | None:
+	"""Return guidance for lighting, blur, or busy background; else ``None``."""
+	if frame.ndim != 3 or frame.shape[2] != 3:
+		return None
+
+	frame_h, frame_w = frame.shape[:2]
+	x1, y1, x2, y2 = _clip_face_bbox(face, frame_h, frame_w)
+	if x2 - x1 < 8 or y2 - y1 < 8:
+		return "Show your full face"
+
+	gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+	crop = gray[y1:y2, x1:x2]
+
+	mean_luma = float(np.mean(crop))
+	if mean_luma < ENROLL_MIN_FACE_LUMA:
+		return "Need better lighting"
+
+	if crop.shape[0] >= 3 and crop.shape[1] >= 3:
+		sharpness = float(cv2.Laplacian(crop, cv2.CV_64F).var())
+		if sharpness < ENROLL_MIN_SHARPNESS:
+			return "Image is too blurry"
+
+	edge_ratio = _background_edge_ratio(gray, x1, y1, x2, y2)
+	if edge_ratio > ENROLL_MAX_BG_EDGE_RATIO:
+		return "Use a plain background"
+
+	return None
+
+
 def enrollment_hint(
 	face: Any,
 	pose_step: PoseStep,
@@ -237,6 +314,7 @@ def enrollment_hint(
 	baseline_yaw: float | None = None,
 	baseline_pitch: float | None = None,
 	mirror_yaw: bool = False,
+	frame: np.ndarray | None = None,
 ) -> str | None:
 	"""Pose guidance first; quality only when pose is in range for the step."""
 	yaw, pitch, _roll = read_pose(face)
@@ -250,4 +328,9 @@ def enrollment_hint(
 	)
 	if hint is not None:
 		return hint
-	return face_quality_hint(face, frame_h, frame_w, pose_step=pose_step)
+	hint = face_quality_hint(face, frame_h, frame_w, pose_step=pose_step)
+	if hint is not None:
+		return hint
+	if frame is not None:
+		return face_scene_hint(face, frame)
+	return None

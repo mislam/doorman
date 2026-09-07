@@ -21,7 +21,6 @@ from enroll import build_gallery
 from enroll_pose import PoseStep, adjust_yaw, enrollment_hint, read_pose
 from face_store import (
 	PersonRecord,
-	PhotoRecord,
 	clear_person_photos,
 	find_or_create_person,
 	find_person_by_name,
@@ -76,14 +75,6 @@ class PersonInfo(BaseModel):
 	photos: list[str]
 
 
-class CaptureResponse(BaseModel):
-	ok: bool
-	label: str
-	filename: str
-	face_count: int
-	message: str
-
-
 class ScanFace(BaseModel):
 	id: str
 	thumbnail: str = Field(description="Small preview — data:image/jpeg;base64,...")
@@ -116,24 +107,6 @@ def _validate_display_name(name: str) -> str:
 		raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-def _save_capture_photo(
-	settings: Settings,
-	display_name: str,
-	capture_label: str,
-	frame: NDArray[np.uint8],
-) -> PhotoRecord:
-	faces_dir = _db_dir(settings)
-	store = load_store(faces_dir)
-	person = find_or_create_person(store, display_name)
-	_, photo_path = new_photo_path(faces_dir)
-	photo_path.parent.mkdir(parents=True, exist_ok=True)
-	if not cv2.imwrite(str(photo_path), frame):
-		raise HTTPException(status_code=500, detail="Failed to save photo")
-	record = register_photo(person, capture_label, photo_path)
-	save_store(store, faces_dir)
-	return record
-
-
 def _verify_enroll_access(
 	request: Request,
 	settings: Annotated[Settings, Depends(_get_settings)],
@@ -162,10 +135,6 @@ def _decode_image(data: bytes) -> NDArray[np.uint8]:
 	if image is None:
 		raise HTTPException(status_code=400, detail="Could not decode image")
 	return image
-
-
-def _face_count(image: NDArray[np.uint8], face_app: Any) -> int:
-	return len(face_app.get(image))
 
 
 def _crop_face(
@@ -373,83 +342,6 @@ def delete_person(
 	return {"message": f"Deleted {person.name}"}
 
 
-@router.post("/api/capture", dependencies=[Depends(_verify_enroll_access)])
-async def capture_photo(
-	settings: Annotated[Settings, Depends(_get_settings)],
-	name: Annotated[str, Form()],
-	label: Annotated[str, Form()],
-	image: Annotated[UploadFile, File()],
-	from_scan: Annotated[str, Form()] = "",
-) -> CaptureResponse:
-	display_name = _validate_display_name(name)
-	capture_label = label.strip().lower()
-	from_scan_flag = from_scan.strip().lower() in {"1", "true", "yes"}
-
-	data = await image.read()
-	if not data:
-		raise HTTPException(status_code=400, detail="Empty image")
-
-	frame = _decode_image(data)
-
-	if capture_label == FOOTAGE_LABEL_PREFIX:
-		store = load_store(_db_dir(settings))
-		person = find_or_create_person(store, display_name)
-		resolved_label = _next_footage_label(person)
-		record = _save_capture_photo(settings, display_name, resolved_label, frame)
-		return CaptureResponse(
-			ok=True,
-			label=resolved_label,
-			filename=record.label,
-			face_count=1,
-			message="Saved",
-		)
-
-	if from_scan_flag:
-		store = load_store(_db_dir(settings))
-		person = find_or_create_person(store, display_name)
-		resolved_label = _next_footage_label(person)
-		record = _save_capture_photo(settings, display_name, resolved_label, frame)
-		return CaptureResponse(
-			ok=True,
-			label=resolved_label,
-			filename=record.label,
-			face_count=1,
-			message="Saved",
-		)
-
-	face_app = get_face_app()
-	count = _face_count(frame, face_app)
-	if count == 0:
-		return CaptureResponse(
-			ok=False,
-			label="",
-			filename="",
-			face_count=0,
-			message="No face detected — try again",
-		)
-	if count > 1:
-		return CaptureResponse(
-			ok=False,
-			label="",
-			filename="",
-			face_count=count,
-			message=f"{count} faces detected — one person per photo",
-		)
-
-	store = load_store(_db_dir(settings))
-	person = find_or_create_person(store, display_name)
-	resolved_label = _next_photo_label(person)
-	record = _save_capture_photo(settings, display_name, resolved_label, frame)
-
-	return CaptureResponse(
-		ok=True,
-		label=resolved_label,
-		filename=record.label,
-		face_count=1,
-		message="Saved",
-	)
-
-
 def _face_bbox_area(face: Any) -> float:
 	x1, y1, x2, y2 = face.bbox.astype(float)
 	return max(0.0, (x2 - x1) * (y2 - y1))
@@ -506,13 +398,13 @@ def _image_face_probe(image: NDArray[np.uint8]) -> tuple[Any | None, int]:
 def _pose_check_from_face(
 	best_face: Any,
 	pose_step: PoseStep,
+	frame: NDArray[np.uint8],
 	*,
-	frame_h: int,
-	frame_w: int,
 	baseline_yaw: float | None = None,
 	baseline_pitch: float | None = None,
 	mirror_yaw: bool = False,
 ) -> PoseCheckResponse:
+	frame_h, frame_w = frame.shape[:2]
 	quality_hint = enrollment_hint(
 		best_face,
 		pose_step,
@@ -521,6 +413,7 @@ def _pose_check_from_face(
 		baseline_yaw=baseline_yaw,
 		baseline_pitch=baseline_pitch,
 		mirror_yaw=mirror_yaw,
+		frame=frame,
 	)
 	yaw, pitch, _roll = read_pose(best_face)
 	yaw = adjust_yaw(yaw, mirror_yaw)
@@ -559,6 +452,7 @@ def _grab_image_one_face(
 		baseline_yaw=baseline_yaw,
 		baseline_pitch=baseline_pitch,
 		mirror_yaw=mirror_yaw,
+		frame=image,
 	)
 	if hint is not None:
 		raise HTTPException(status_code=422, detail=hint)
@@ -597,6 +491,7 @@ def _grab_doorbell_one_face(
 		w,
 		baseline_yaw=baseline_yaw,
 		baseline_pitch=baseline_pitch,
+		frame=frame,
 	)
 	if hint is not None:
 		raise HTTPException(status_code=422, detail=hint)
@@ -622,22 +517,12 @@ def doorbell_pose_check(
 	if best_face is None:
 		return PoseCheckResponse(ok=False, hint="Connecting to doorbell…")
 
-	h, w = _frame.shape[:2]
-	hint = enrollment_hint(
+	return _pose_check_from_face(
 		best_face,
 		pose_step,
-		h,
-		w,
+		_frame,
 		baseline_yaw=baseline_yaw,
 		baseline_pitch=baseline_pitch,
-	)
-	yaw, pitch, _roll = read_pose(best_face)
-	return PoseCheckResponse(
-		ok=hint is None,
-		hint=hint,
-		yaw=yaw,
-		pitch=pitch,
-		face_count=1,
 	)
 
 
@@ -669,8 +554,7 @@ async def phone_pose_check(
 	return _pose_check_from_face(
 		best_face,
 		pose_step,
-		frame_h=frame.shape[0],
-		frame_w=frame.shape[1],
+		frame,
 		baseline_yaw=baseline_yaw,
 		baseline_pitch=baseline_pitch,
 		mirror_yaw=mirror_yaw,
@@ -724,43 +608,6 @@ def doorbell_preview(
 	if payload is None:
 		raise HTTPException(status_code=500, detail="Failed to encode snapshot")
 	return Response(content=payload, media_type="image/jpeg")
-
-
-@router.post("/api/capture/doorbell", dependencies=[Depends(_verify_enroll_access)])
-def capture_doorbell(
-	settings: Annotated[Settings, Depends(_get_settings)],
-	name: Annotated[str, Form()],
-	step: Annotated[str | None, Form()] = None,
-) -> CaptureResponse:
-	display_name = _validate_display_name(name)
-	pose_step = _normalize_pose_step(step)
-	store = load_store(_db_dir(settings))
-	person = find_or_create_person(store, display_name)
-	capture_label = _next_photo_label(person)
-
-	try:
-		best_frame, _face = _grab_doorbell_one_face(settings, pose_step=pose_step)
-	except HTTPException as exc:
-		if exc.status_code == 422:
-			count = 0
-			return CaptureResponse(
-				ok=False,
-				label=capture_label,
-				filename="",
-				face_count=count,
-				message=str(exc.detail),
-			)
-		raise
-
-	record = _save_capture_photo(settings, display_name, capture_label, best_frame)
-
-	return CaptureResponse(
-		ok=True,
-		label=capture_label,
-		filename=record.label,
-		face_count=1,
-		message="Saved doorbell frame",
-	)
 
 
 def _save_enrollment_images(

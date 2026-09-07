@@ -25,7 +25,15 @@ export type GuideDirection = "left" | "right" | "up" | "down"
 
 const HOLD = "hold"
 
-const QUALITY_HINTS = new Set(["Show your full face", "Move closer"])
+const QUALITY_HINTS = new Set([
+	"Show your full face",
+	"Move closer",
+	"Need better lighting",
+	"Image is too blurry",
+	"Use a plain background",
+	"No face visible",
+	"One person only",
+])
 const WAITING_HINTS = new Set(["Hold still", "Hold still — finding your face"])
 
 /** True when the face is visible enough to show pose arrows (not only after pose passes). */
@@ -44,7 +52,15 @@ export function faceGuidesReady(result: {
 /** True when we can anchor baseline yaw/pitch from this poll. */
 export function canSetBaseline(hint: string | null): boolean {
 	const text = hint ?? ""
-	return text !== "Show your full face" && text !== "Move closer"
+	return (
+		text !== "Show your full face" &&
+		text !== "Move closer" &&
+		text !== "Need better lighting" &&
+		text !== "Image is too blurry" &&
+		text !== "Use a plain background" &&
+		text !== "No face visible" &&
+		text !== "One person only"
+	)
 }
 
 const GUIDANCE_CUE: Record<string, GuideCue> = {

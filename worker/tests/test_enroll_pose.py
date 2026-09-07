@@ -6,7 +6,14 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from enroll_pose import adjust_yaw, enrollment_hint, face_quality_hint, pose_hint, read_pose
+from enroll_pose import (
+	adjust_yaw,
+	enrollment_hint,
+	face_quality_hint,
+	face_scene_hint,
+	pose_hint,
+	read_pose,
+)
 
 BASELINE_YAW = 0.0
 BASELINE_PITCH = 5.0
@@ -255,3 +262,63 @@ def test_enrollment_hint_accepts_valid_up_pose() -> None:
 		kps=kps,
 	)
 	assert enrollment_hint(face, "up", 80, 80, baseline_yaw=0.0, baseline_pitch=5.0) is None
+
+
+def _face_bbox_frame(
+	frame: np.ndarray,
+	*,
+	det_score: float = 0.99,
+	margin_div: int = 8,
+) -> SimpleNamespace:
+	h, w = frame.shape[:2]
+	margin = min(h, w) // margin_div
+	return SimpleNamespace(
+		det_score=det_score,
+		bbox=np.array([margin, margin, w - margin, h - margin], dtype=np.float32),
+		kps=np.array(
+			[
+				[w * 0.35, h * 0.38],
+				[w * 0.65, h * 0.38],
+				[w * 0.50, h * 0.52],
+				[w * 0.40, h * 0.68],
+				[w * 0.60, h * 0.68],
+			],
+			dtype=np.float32,
+		),
+	)
+
+
+def test_face_scene_rejects_dark_face() -> None:
+	frame = np.full((120, 120, 3), 28, dtype=np.uint8)
+	face = _face_bbox_frame(frame)
+	assert face_scene_hint(face, frame) == "Need better lighting"
+
+
+def test_face_scene_rejects_blurry_face() -> None:
+	frame = np.full((120, 120, 3), 170, dtype=np.uint8)
+	face = _face_bbox_frame(frame)
+	assert face_scene_hint(face, frame) == "Image is too blurry"
+
+
+def test_face_scene_accepts_well_lit_sharp_face() -> None:
+	rng = np.random.default_rng(0)
+	frame = np.full((120, 120, 3), 165, dtype=np.uint8)
+	frame[15:105, 15:105] = rng.integers(120, 200, size=(90, 90, 3), dtype=np.uint8)
+	face = _face_bbox_frame(frame)
+	assert face_scene_hint(face, frame) is None
+
+
+def test_face_scene_rejects_busy_background() -> None:
+	rng = np.random.default_rng(2)
+	frame = np.full((200, 200, 3), 175, dtype=np.uint8)
+	face = _face_bbox_frame(frame, margin_div=4)
+	x1, y1, x2, y2 = (int(face.bbox[0]), int(face.bbox[1]), int(face.bbox[2]), int(face.bbox[3]))
+	frame[y1:y2, x1:x2] = rng.integers(120, 200, size=(y2 - y1, x2 - x1, 3), dtype=np.uint8)
+	# Cluttered shelf / doorway above the face — outside the face bbox.
+	frame[: max(0, y1 - 5), :, :] = rng.integers(
+		20,
+		220,
+		size=(max(0, y1 - 5), 200, 3),
+		dtype=np.uint8,
+	)
+	assert face_scene_hint(face, frame) == "Use a plain background"

@@ -54,6 +54,10 @@ homelab `.env`. Regenerate after an IP change: delete `~/doorman/certs/` and red
 Use **doorbell-domain** photos when possible (same camera and lighting as real rings). **Upload**
 works on HTTPS too. **Phone** live camera needs the trusted CA (see above).
 
+During guided capture the worker checks pose plus scene quality: **one face only**, **well-lit**,
+**sharp**, and a **plain background** behind you. Move to better light or a simpler backdrop if
+prompted.
+
 The page remembers your last camera choice in the browser.
 
 Optional: `curl -k -X POST https://192.168.x.x:8768/recognize` to test recognition (`-k` skips CA

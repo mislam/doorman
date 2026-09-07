@@ -37,6 +37,14 @@ def _auth_headers() -> dict[str, str]:
 	return {"Authorization": "Bearer test-secret"}
 
 
+def _valid_enroll_frame() -> np.ndarray:
+	"""BGR frame that passes lighting, sharpness, and plain-background checks."""
+	rng = np.random.default_rng(1)
+	frame = np.full((80, 80, 3), 165, dtype=np.uint8)
+	frame[15:75, 15:65] = rng.integers(120, 200, size=(60, 50, 3), dtype=np.uint8)
+	return frame
+
+
 def _valid_enroll_face(
 	*,
 	pitch: float = 5.0,
@@ -82,90 +90,6 @@ def test_enroll_requires_token(tmp_path: Path) -> None:
 	client = _client(_settings(tmp_path))
 	response = client.get("/enroll/api/people")
 	assert response.status_code == 401
-
-
-def test_capture_photo_saves_face(tmp_path: Path) -> None:
-	settings = _settings(tmp_path)
-	client = _client(settings)
-	db_dir = settings.db_path()
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
-	_, encoded = __import__("cv2").imencode(".jpg", image)
-
-	mock_app = MagicMock()
-	mock_app.get.return_value = [SimpleNamespace(det_score=0.99)]
-
-	with (
-		patch("main.warmup_face_app"),
-		patch("enroll_web.get_face_app", return_value=mock_app),
-		patch("enroll_web._decode_image", return_value=image),
-	):
-		response = client.post(
-			"/enroll/api/capture",
-			headers=_auth_headers(),
-			data={"name": "alice", "label": "front"},
-			files={"image": ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
-		)
-
-	assert response.status_code == 200
-	data = response.json()
-	assert data["ok"] is True
-	assert data["label"] == "photo-1"
-	store = load_store(db_dir)
-	assert len(store.people) == 1
-	assert store.people[0].name == "alice"
-	assert len(list(photos_dir(db_dir).glob("*.jpg"))) == 1
-
-
-def test_capture_preserves_display_name_with_special_chars(tmp_path: Path) -> None:
-	settings = _settings(tmp_path)
-	client = _client(settings)
-	db_dir = settings.db_path()
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
-	_, encoded = __import__("cv2").imencode(".jpg", image)
-
-	mock_app = MagicMock()
-	mock_app.get.return_value = [SimpleNamespace(det_score=0.99)]
-
-	with (
-		patch("main.warmup_face_app"),
-		patch("enroll_web.get_face_app", return_value=mock_app),
-		patch("enroll_web._decode_image", return_value=image),
-	):
-		response = client.post(
-			"/enroll/api/capture",
-			headers=_auth_headers(),
-			data={"name": "Conor O'Brien", "label": "front"},
-			files={"image": ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
-		)
-
-	assert response.status_code == 200
-	store = load_store(db_dir)
-	assert store.people[0].name == "Conor O'Brien"
-
-
-def test_capture_rejects_no_face(tmp_path: Path) -> None:
-	settings = _settings(tmp_path)
-	client = _client(settings)
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
-	_, encoded = __import__("cv2").imencode(".jpg", image)
-
-	mock_app = MagicMock()
-	mock_app.get.return_value = []
-
-	with (
-		patch("main.warmup_face_app"),
-		patch("enroll_web.get_face_app", return_value=mock_app),
-		patch("enroll_web._decode_image", return_value=image),
-	):
-		response = client.post(
-			"/enroll/api/capture",
-			headers=_auth_headers(),
-			data={"name": "alice", "label": "front"},
-			files={"image": ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
-		)
-
-	assert response.status_code == 200
-	assert response.json()["ok"] is False
 
 
 def test_rebuild_gallery(tmp_path: Path) -> None:
@@ -287,54 +211,6 @@ def test_scan_returns_crops(tmp_path: Path) -> None:
 	assert len(data["faces"]) == 1
 	assert data["faces"][0]["thumbnail"].startswith("data:image/jpeg;base64,")
 	assert data["faces"][0]["crop"].startswith("data:image/jpeg;base64,")
-
-
-def test_capture_footage_saves_crop(tmp_path: Path) -> None:
-	settings = _settings(tmp_path)
-	client = _client(settings)
-	db_dir = settings.db_path()
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
-	_, encoded = __import__("cv2").imencode(".jpg", image)
-
-	with patch("main.warmup_face_app"):
-		response = client.post(
-			"/enroll/api/capture",
-			headers=_auth_headers(),
-			data={"name": "guest", "label": "footage"},
-			files={"image": ("crop.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
-		)
-
-	assert response.status_code == 200
-	data = response.json()
-	assert data["ok"] is True
-	assert data["label"] == "footage-1"
-	store = load_store(db_dir)
-	assert len(store.people) == 1
-	assert store.people[0].name == "guest"
-	assert len(list(photos_dir(db_dir).glob("*.jpg"))) == 1
-
-
-def test_capture_from_scan_skips_detect(tmp_path: Path) -> None:
-	settings = _settings(tmp_path)
-	client = _client(settings)
-	db_dir = settings.db_path()
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
-	_, encoded = __import__("cv2").imencode(".jpg", image)
-
-	with patch("main.warmup_face_app"):
-		response = client.post(
-			"/enroll/api/capture",
-			headers=_auth_headers(),
-			data={"name": "guest", "label": "front", "from_scan": "1"},
-			files={"image": ("front.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
-		)
-
-	assert response.status_code == 200
-	data = response.json()
-	assert data["ok"] is True
-	assert data["label"] == "footage-1"
-	store = load_store(db_dir)
-	assert store.people[0].photos[0].label == "footage-1"
 
 
 def test_enroll_person_saves_and_rebuilds(tmp_path: Path) -> None:
@@ -491,7 +367,7 @@ def test_enroll_footage_uses_footage_labels(tmp_path: Path) -> None:
 def test_doorbell_pose_check_rejects_turned_center(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	frame = np.zeros((80, 80, 3), dtype=np.uint8)
+	frame = _valid_enroll_frame()
 	mock_face = _valid_enroll_face(yaw=30.0)
 
 	with (
@@ -512,7 +388,7 @@ def test_doorbell_pose_check_rejects_turned_center(tmp_path: Path) -> None:
 def test_doorbell_pose_check_accepts_center(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	frame = np.zeros((80, 80, 3), dtype=np.uint8)
+	frame = _valid_enroll_frame()
 	mock_face = _valid_enroll_face()
 
 	with (
@@ -531,7 +407,7 @@ def test_doorbell_pose_check_accepts_center(tmp_path: Path) -> None:
 def test_doorbell_preview_rejects_bad_pose(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	frame = np.zeros((80, 80, 3), dtype=np.uint8)
+	frame = _valid_enroll_frame()
 	mock_face = _valid_enroll_face(yaw=30.0)
 
 	with (
@@ -549,7 +425,7 @@ def test_doorbell_preview_rejects_bad_pose(tmp_path: Path) -> None:
 def test_phone_pose_check_accepts_center(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	image = _valid_enroll_frame()
 	_, encoded = __import__("cv2").imencode(".jpg", image)
 	mock_face = _valid_enroll_face()
 
@@ -570,7 +446,7 @@ def test_phone_pose_check_accepts_center(tmp_path: Path) -> None:
 def test_phone_pose_check_rejects_turned_center(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	image = _valid_enroll_frame()
 	_, encoded = __import__("cv2").imencode(".jpg", image)
 	mock_face = _valid_enroll_face(yaw=30.0)
 
@@ -593,7 +469,7 @@ def test_phone_pose_check_rejects_turned_center(tmp_path: Path) -> None:
 def test_phone_preview_returns_jpeg(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	image = _valid_enroll_frame()
 	_, encoded = __import__("cv2").imencode(".jpg", image)
 	mock_face = _valid_enroll_face()
 
