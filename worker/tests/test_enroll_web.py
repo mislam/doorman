@@ -443,6 +443,27 @@ def test_phone_pose_check_accepts_center(tmp_path: Path) -> None:
 	assert response.json()["ok"] is True
 
 
+def test_phone_preflight_accepts_frontal(tmp_path: Path) -> None:
+	settings = _settings(tmp_path)
+	client = _client(settings)
+	image = _valid_enroll_frame()
+	_, encoded = __import__("cv2").imencode(".jpg", image)
+	mock_face = _valid_enroll_face(yaw=30.0)
+
+	with (
+		patch("main.warmup_face_app"),
+		patch("enroll_web._image_face_probe", return_value=(mock_face, 1)),
+	):
+		response = client.post(
+			"/enroll/api/capture/phone/pose?step=left&preflight=true",
+			headers=_auth_headers(),
+			files={"image": ("frame.jpg", BytesIO(encoded.tobytes()), "image/jpeg")},
+		)
+
+	assert response.status_code == 200
+	assert response.json()["ok"] is True
+
+
 def test_phone_pose_check_rejects_turned_center(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
@@ -491,7 +512,7 @@ def test_phone_preview_returns_jpeg(tmp_path: Path) -> None:
 def test_phone_pose_check_rejects_partial_face(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	image = np.zeros((80, 80, 3), dtype=np.uint8)
+	image = _valid_enroll_frame()
 	_, encoded = __import__("cv2").imencode(".jpg", image)
 	mock_face = _forehead_only_face()
 
@@ -514,7 +535,7 @@ def test_phone_pose_check_rejects_partial_face(tmp_path: Path) -> None:
 def test_doorbell_pose_check_rejects_partial_face(tmp_path: Path) -> None:
 	settings = _settings(tmp_path)
 	client = _client(settings)
-	frame = np.zeros((80, 80, 3), dtype=np.uint8)
+	frame = _valid_enroll_frame()
 	mock_face = _forehead_only_face()
 
 	with (

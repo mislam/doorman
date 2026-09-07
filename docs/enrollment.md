@@ -54,9 +54,15 @@ homelab `.env`. Regenerate after an IP change: delete `~/doorman/certs/` and red
 Use **doorbell-domain** photos when possible (same camera and lighting as real rings). **Upload**
 works on HTTPS too. **Phone** live camera needs the trusted CA (see above).
 
-During guided capture the worker checks pose plus scene quality: **one face only**, **well-lit**,
-**sharp**, and a **plain background** behind you. Move to better light or a simpler backdrop if
-prompted.
+**Guided capture** runs in two phases:
+
+1. **Get ready** — face the camera straight on. The worker checks **one face**, **distance** (move
+   closer on phone), **lighting**, **sharpness**, and a **plain background**. Pose arrows do not
+   appear until this passes for a moment. Nothing is saved in this phase.
+2. **Pose steps** — left, right, up, down, then straight on. The same environment checks still run
+   on every poll; pose hints appear only when setup is OK.
+
+Move to better light or a simpler backdrop if prompted.
 
 The page remembers your last camera choice in the browser.
 

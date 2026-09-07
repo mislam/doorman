@@ -9,6 +9,7 @@ import numpy as np
 from enroll_pose import (
 	adjust_yaw,
 	enrollment_hint,
+	face_distance_hint,
 	face_quality_hint,
 	face_scene_hint,
 	pose_hint,
@@ -94,6 +95,19 @@ def test_left_pose_needs_negative_yaw_delta() -> None:
 	)
 
 
+def test_left_pose_accepts_large_turn() -> None:
+	assert (
+		pose_hint(
+			"left",
+			yaw=-50.0,
+			pitch=BASELINE_PITCH,
+			baseline_yaw=BASELINE_YAW,
+			baseline_pitch=BASELINE_PITCH,
+		)
+		is None
+	)
+
+
 def test_right_pose_needs_positive_yaw_delta() -> None:
 	assert (
 		pose_hint(
@@ -172,6 +186,141 @@ def _valid_face_kps() -> np.ndarray:
 		[[25, 28], [55, 28], [40, 40], [30, 58], [50, 58]],
 		dtype=np.float32,
 	)
+
+
+def test_face_distance_hint_phone_rejects_far_face() -> None:
+	face = SimpleNamespace(
+		det_score=0.99,
+		bbox=np.array([200, 200, 270, 270], dtype=np.float32),
+		kps=np.array(
+			[[210, 220], [260, 220], [235, 240], [220, 255], [250, 255]],
+			dtype=np.float32,
+		),
+	)
+	assert face_distance_hint(face, 480, 480, strict=True) == "Move closer"
+	assert face_distance_hint(face, 480, 480, strict=False) is None
+
+
+def test_face_distance_hint_phone_accepts_near_face() -> None:
+	kps = np.array(
+		[[140, 180], [300, 180], [220, 250], [170, 330], [270, 330]],
+		dtype=np.float32,
+	)
+	face = SimpleNamespace(
+		det_score=0.99,
+		bbox=np.array([120, 150, 320, 360], dtype=np.float32),
+		kps=kps,
+	)
+	assert face_distance_hint(face, 480, 480, strict=True) is None
+
+
+def test_face_scene_skips_background_when_face_is_far() -> None:
+	"""Far phone capture should not mislabel room corners as a busy background."""
+	rng = np.random.default_rng(2)
+	frame = np.full((480, 480, 3), 230, dtype=np.uint8)
+	kps = np.array(
+		[[180, 200], [230, 200], [205, 230], [190, 260], [220, 260]],
+		dtype=np.float32,
+	)
+	face = SimpleNamespace(
+		det_score=0.99,
+		bbox=np.array([160, 180, 250, 280], dtype=np.float32),
+		kps=kps,
+	)
+	x1, y1, x2, y2 = 160, 180, 250, 280
+	frame[y1:y2, x1:x2] = rng.integers(120, 200, size=(y2 - y1, x2 - x1, 3), dtype=np.uint8)
+	frame[:120, :] = rng.integers(20, 220, size=(120, 480, 3), dtype=np.uint8)
+	assert face_scene_hint(face, frame) is None
+
+
+def test_enrollment_hint_phone_prefers_move_closer_over_background() -> None:
+	rng = np.random.default_rng(2)
+	frame = np.full((480, 480, 3), 230, dtype=np.uint8)
+	kps = np.array(
+		[[210, 220], [260, 220], [235, 240], [220, 255], [250, 255]],
+		dtype=np.float32,
+	)
+	face = SimpleNamespace(
+		det_score=0.99,
+		pose=np.array([5.0, 2.0, 0.0]),
+		bbox=np.array([200, 200, 270, 270], dtype=np.float32),
+		kps=kps,
+	)
+	x1, y1, x2, y2 = 200, 200, 270, 270
+	frame[y1:y2, x1:x2] = rng.integers(120, 200, size=(y2 - y1, x2 - x1, 3), dtype=np.uint8)
+	frame[:120, :] = rng.integers(20, 220, size=(120, 480, 3), dtype=np.uint8)
+	assert (
+		enrollment_hint(
+			face,
+			"center",
+			480,
+			480,
+			baseline_yaw=0.0,
+			baseline_pitch=5.0,
+			mirror_yaw=True,
+			frame=frame,
+		)
+		== "Move closer"
+	)
+
+
+def test_enrollment_preflight_skips_pose_turn() -> None:
+	face = SimpleNamespace(
+		det_score=0.99,
+		pose=np.array([5.0, 2.0, 0.0]),
+		bbox=np.array([15, 15, 65, 75], dtype=np.float32),
+		kps=_valid_face_kps(),
+	)
+	assert (
+		enrollment_hint(
+			face,
+			"left",
+			80,
+			80,
+			baseline_yaw=0.0,
+			baseline_pitch=5.0,
+			preflight=True,
+		)
+		is None
+	)
+
+
+def test_enrollment_pose_runs_after_environment() -> None:
+	face = SimpleNamespace(
+		det_score=0.99,
+		pose=np.array([5.0, 2.0, 0.0]),
+		bbox=np.array([15, 15, 65, 75], dtype=np.float32),
+		kps=_valid_face_kps(),
+	)
+	assert (
+		enrollment_hint(
+			face,
+			"left",
+			80,
+			80,
+			baseline_yaw=0.0,
+			baseline_pitch=5.0,
+		)
+		== "Turn more left"
+	)
+
+
+def test_face_scene_checks_background_on_phone_when_close() -> None:
+	rng = np.random.default_rng(2)
+	frame = np.full((480, 480, 3), 230, dtype=np.uint8)
+	kps = np.array(
+		[[140, 180], [300, 180], [220, 250], [170, 330], [270, 330]],
+		dtype=np.float32,
+	)
+	face = SimpleNamespace(
+		det_score=0.99,
+		bbox=np.array([120, 150, 320, 360], dtype=np.float32),
+		kps=kps,
+	)
+	x1, y1, x2, y2 = 120, 150, 320, 360
+	frame[y1:y2, x1:x2] = rng.integers(120, 200, size=(y2 - y1, x2 - x1, 3), dtype=np.uint8)
+	frame[:120, :] = rng.integers(20, 220, size=(120, 480, 3), dtype=np.uint8)
+	assert face_scene_hint(face, frame, mirror_yaw=True) == "Use a plain background"
 
 
 def test_face_quality_accepts_full_face() -> None:
@@ -305,6 +454,28 @@ def test_face_scene_accepts_well_lit_sharp_face() -> None:
 	frame = np.full((120, 120, 3), 165, dtype=np.uint8)
 	frame[15:105, 15:105] = rng.integers(120, 200, size=(90, 90, 3), dtype=np.uint8)
 	face = _face_bbox_frame(frame)
+	assert face_scene_hint(face, frame) is None
+
+
+def test_face_scene_accepts_closeup_on_plain_wall() -> None:
+	"""Close-up phone capture: hair silhouette must not count as a busy background."""
+	rng = np.random.default_rng(0)
+	size = 480
+	frame = np.full((size, size, 3), 230, dtype=np.uint8)
+	margin = int(size * 0.12)
+	inset = int(size * 0.05)
+	frame[margin : size - margin, margin : size - margin] = rng.integers(
+		40,
+		150,
+		size=(size - 2 * margin, size - 2 * margin, 3),
+		dtype=np.uint8,
+	)
+	face = SimpleNamespace(
+		bbox=np.array(
+			[margin + inset, margin + inset, size - margin - inset, size - margin - inset],
+			dtype=np.float32,
+		),
+	)
 	assert face_scene_hint(face, frame) is None
 
 

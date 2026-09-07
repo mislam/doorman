@@ -72,12 +72,13 @@ export type PoseCheckResult = {
 	face_count: number
 }
 
-type PoseQuery = { baselineYaw?: number; baselinePitch?: number }
+type PoseQuery = { baselineYaw?: number; baselinePitch?: number; preflight?: boolean }
 
 function poseQueryParams(step: PoseStep, opts?: PoseQuery): URLSearchParams {
 	const params = new URLSearchParams({ step })
 	if (opts?.baselineYaw !== undefined) params.set("baseline_yaw", String(opts.baselineYaw))
 	if (opts?.baselinePitch !== undefined) params.set("baseline_pitch", String(opts.baselinePitch))
+	if (opts?.preflight) params.set("preflight", "true")
 	return params
 }
 

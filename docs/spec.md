@@ -127,8 +127,9 @@ rest_command:
     verify_ssl: false
 ```
 
-Worker is reached on homelab port **8768** over HTTPS (Caddy → worker). Replace `192.168.x.x` with
-your homelab LAN IP. Use `verify_ssl: false` unless you install the Doorman root CA on the HA host.
+Port **8768** is **HTTPS only** (Caddy → worker — same as `/enroll`). Use `https://` and your
+homelab LAN IP; plain `http://` fails with “Client sent an HTTP request to an HTTPS server.”
+`verify_ssl: false` is fine on the LAN — the enroll CA is for phones, not HA.
 
 ### Worker `.env` (homelab)
 

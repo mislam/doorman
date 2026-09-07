@@ -403,6 +403,7 @@ def _pose_check_from_face(
 	baseline_yaw: float | None = None,
 	baseline_pitch: float | None = None,
 	mirror_yaw: bool = False,
+	preflight: bool = False,
 ) -> PoseCheckResponse:
 	frame_h, frame_w = frame.shape[:2]
 	quality_hint = enrollment_hint(
@@ -414,6 +415,7 @@ def _pose_check_from_face(
 		baseline_pitch=baseline_pitch,
 		mirror_yaw=mirror_yaw,
 		frame=frame,
+		preflight=preflight,
 	)
 	yaw, pitch, _roll = read_pose(best_face)
 	yaw = adjust_yaw(yaw, mirror_yaw)
@@ -505,6 +507,7 @@ def doorbell_pose_check(
 	step: Annotated[str | None, Query()] = None,
 	baseline_yaw: Annotated[float | None, Query()] = None,
 	baseline_pitch: Annotated[float | None, Query()] = None,
+	preflight: Annotated[bool, Query()] = False,
 ) -> PoseCheckResponse:
 	"""Poll head pose for guided live enrollment (no image transfer)."""
 	pose_step = _normalize_pose_step(step)
@@ -523,6 +526,7 @@ def doorbell_pose_check(
 		_frame,
 		baseline_yaw=baseline_yaw,
 		baseline_pitch=baseline_pitch,
+		preflight=preflight,
 	)
 
 
@@ -533,6 +537,7 @@ async def phone_pose_check(
 	baseline_yaw: Annotated[float | None, Query()] = None,
 	baseline_pitch: Annotated[float | None, Query()] = None,
 	mirror_yaw: Annotated[bool, Query()] = True,
+	preflight: Annotated[bool, Query()] = False,
 ) -> PoseCheckResponse:
 	"""Poll head pose from a phone camera frame (InsightFace on uploaded JPEG)."""
 	pose_step = _normalize_pose_step(step)
@@ -558,6 +563,7 @@ async def phone_pose_check(
 		baseline_yaw=baseline_yaw,
 		baseline_pitch=baseline_pitch,
 		mirror_yaw=mirror_yaw,
+		preflight=preflight,
 	)
 
 

@@ -52,15 +52,7 @@ export function faceGuidesReady(result: {
 /** True when we can anchor baseline yaw/pitch from this poll. */
 export function canSetBaseline(hint: string | null): boolean {
 	const text = hint ?? ""
-	return (
-		text !== "Show your full face" &&
-		text !== "Move closer" &&
-		text !== "Need better lighting" &&
-		text !== "Image is too blurry" &&
-		text !== "Use a plain background" &&
-		text !== "No face visible" &&
-		text !== "One person only"
-	)
+	return text === "" || text === "Hold still" || text === "still"
 }
 
 const GUIDANCE_CUE: Record<string, GuideCue> = {

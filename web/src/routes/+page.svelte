@@ -39,7 +39,8 @@
 	} from "$lib/phone-camera";
 
 	const POLL_MS = 1000;
-	const STEP_TIMEOUT_MS = 45_000;
+	const PREFLIGHT_TIMEOUT_MS = 30_000;
+	const STEP_TIMEOUT_MS = 30_000;
 	const OK_STREAK = 2;
 	const CAMERA_KEY = "doorman-enroll-camera";
 
@@ -82,6 +83,7 @@
 	let poseGuidance = $state("hold");
 	let poseHintKey = $state("hold");
 	let faceReady = $state(false);
+	let envReady = $state(false);
 	let stepTimedOut = $state(false);
 	let capturing = $state(false);
 	let enrollSuccessName = $state("");
@@ -180,7 +182,7 @@
 		inGuidedCapture ? guideCueFromGuidance(poseHintKey, currentLiveStep.pose) : "none",
 	);
 	const guideDirection = $derived.by(() => {
-		if (!faceReady || !inGuidedCapture) return null;
+		if (!envReady || !faceReady || !inGuidedCapture) return null;
 		// Step 5: always top up-arrow — raise head to straight (not bottom down-arrow from step 4).
 		if (currentLiveStep.pose === "center") return "up";
 		if (guideCue === "none") return null;
@@ -203,11 +205,18 @@
 		}
 		if (!usePhoneCamera && showLiveStream && !cameraReady) return "Connecting to doorbell…";
 		if (!cameraReady) return "";
+		if (inGuidedCapture && !envReady) {
+			if (poseGuidance !== HOLD_STILL && poseGuidance !== "still") {
+				return briefPoseHint(poseGuidance);
+			}
+			return "Face the camera — get ready";
+		}
 		if (inGuidedCapture && !faceReady) return "Hold still";
 		if (currentLiveStep.pose === "center" && faceReady) return "Look straight ahead";
 		if (showGuideOverlay) return guideHint(guideCue);
 		if (poseGuidance === "still") return "Hold still…";
 		if (poseGuidance !== HOLD_STILL) return briefPoseHint(poseGuidance);
+		if (!envReady) return "Face the camera — get ready";
 		return currentLiveStep.hint;
 	});
 	const showActionSlot = $derived(
@@ -332,10 +341,14 @@
 		return () => window.clearTimeout(focusFallback);
 	});
 
-	function resetStepTimer() {
+	function beginStepTimer() {
 		stepStartedAt = Date.now();
 		stepTimedOut = false;
 		okStreak = 0;
+	}
+
+	function resetStepTimer() {
+		beginStepTimer();
 		poseHintKey = HOLD_STILL;
 		poseGuidance = HOLD_STILL;
 	}
@@ -395,7 +408,9 @@
 		if (liveStaged[activeLiveStepIndex]) return;
 		const stepIndex = activeLiveStepIndex;
 		const stepPose = currentLiveStep.pose;
-		if (Date.now() - stepStartedAt > STEP_TIMEOUT_MS) {
+		const preflight = !envReady;
+		const stepTimeoutMs = preflight ? PREFLIGHT_TIMEOUT_MS : STEP_TIMEOUT_MS;
+		if (Date.now() - stepStartedAt > stepTimeoutMs) {
 			stepTimedOut = true;
 			stopPosePolling();
 			poseGuidance = "Timed out — tap Retry";
@@ -410,13 +425,36 @@
 					return;
 				}
 				const frame = await captureVideoFrame(phoneVideo);
-				result = await checkPhonePose(stepPose, frame, poseQuery());
+				result = await checkPhonePose(stepPose, frame, {
+					...poseQuery(),
+					preflight,
+				});
 			} else {
-				result = await checkDoorbellPose(stepPose, poseQuery());
+				result = await checkDoorbellPose(stepPose, { ...poseQuery(), preflight });
 			}
 			if (stepIndex !== activeLiveStepIndex) return;
 
 			const raw = result.hint ?? "";
+
+			if (preflight) {
+				faceReady = false;
+				if (!result.ok) {
+					okStreak = 0;
+					poseHintKey = raw || "Adjust setup";
+					poseGuidance = briefPoseHint(poseHintKey);
+					return;
+				}
+				okStreak += 1;
+				poseHintKey = HOLD_STILL;
+				poseGuidance = HOLD_STILL;
+				if (okStreak >= OK_STREAK) {
+					envReady = true;
+					baselineYaw = result.yaw;
+					baselinePitch = result.pitch;
+					beginStepTimer();
+				}
+				return;
+			}
 
 			if (result.face_count > 0 && baselineYaw === null && canSetBaseline(raw)) {
 				baselineYaw = result.yaw;
@@ -513,6 +551,7 @@
 		footageStaged = [];
 		baselineYaw = null;
 		baselinePitch = null;
+		envReady = false;
 		faceReady = false;
 		poseHintKey = HOLD_STILL;
 		poseGuidance = HOLD_STILL;
@@ -651,6 +690,7 @@
 		message = "";
 		stepTimedOut = false;
 		faceReady = false;
+		envReady = false;
 		poseHintKey = HOLD_STILL;
 		poseGuidance = HOLD_STILL;
 		baselineYaw = null;
@@ -680,6 +720,7 @@
 		stopPosePolling();
 		stepTimedOut = false;
 		faceReady = false;
+		envReady = false;
 		poseHintKey = HOLD_STILL;
 		poseGuidance = HOLD_STILL;
 		baselineYaw = null;
