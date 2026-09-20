@@ -214,7 +214,7 @@ comfortable next to other GPU services on the 3060.
 
 | Machine                | Role                   | What runs here                                 |
 | ---------------------- | ---------------------- | ---------------------------------------------- |
-| **Dev machine (Mac)**        | Edit, lint, unit tests | pytest, RTSP smoke test (`bun play-stream`)    |
+| **Dev machine (Mac)**  | Edit, lint, unit tests | pytest, RTSP smoke test (`bun play-stream`)    |
 | **Homelab (RTX 3060)** | GPU + prod             | InsightFace, live RTSP on ring, Docker, HA E2E |
 
 Mac does not need CUDA for day-to-day plumbing tests. Face enrollment and recognition integration

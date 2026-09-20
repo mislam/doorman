@@ -1,82 +1,131 @@
 # Doorman
 
-When the **Reolink doorbell rings**, recognize **enrolled family faces** from the camera stream and
-send a **Home Assistant** notification (who's at the door, or unknown visitor).
+**Self-hosted AI face recognition for your smart doorbell.**
 
-Self-hosted on the homelab GPU (RTX 3060). Learning project — small scope, daily usefulness.
+Most doorbells tell you someone rang. Doorman tells you who. When the bell rings, it grabs frames
+from the camera, runs on-device AI inference against enrolled faces, and sends a named alert through
+[Home Assistant](https://www.home-assistant.io/). For example: _"Alice is at the door"_ or _"Unknown
+visitor."_
 
-## Docs
+Everything runs on your own hardware. No cloud APIs, no monthly fees, no sending video to a third
+party.
 
-| Doc                                        | Purpose                               |
-| ------------------------------------------ | ------------------------------------- |
-| [`docs/spec.md`](docs/spec.md)             | Product + technical spec              |
-| [`docs/enrollment.md`](docs/enrollment.md) | Enroll faces via web UI               |
-| [`docs/homelab.md`](docs/homelab.md)       | Shared AI rig hardware and GPU budget |
-| [`worker/README.md`](worker/README.md)     | Python modules, env, Docker           |
-| [`WORKLOG.md`](WORKLOG.md)                 | Active implementation phase           |
+---
 
-## Commands
+## How it works
 
-| Command                     | What                                                   |
-| --------------------------- | ------------------------------------------------------ |
-| `bun setup`                 | Create `worker/.venv` and install dev deps             |
-| `bun lint` / `bun lint:fix` | Prettier + Ruff                                        |
-| `bun run test`              | pytest (`bun test` is Bun's runner — use `run`)        |
-| `bun run convert:fixtures`  | PNG → JPEG for doorbell test images (Mac)              |
-| `bun run test:integration`  | Doorbell fixture tests on homelab Docker (InsightFace) |
-| `bun play-stream`           | RTSP smoke test (`-- -v` for verbose)                  |
-| `bun run build:web`         | Build SvelteKit UI → `worker/static/enroll/`           |
-| `bun run deploy`            | Rsync code → homelab + Docker rebuild                  |
-| `bun status`                | Homelab Docker compose + GPU snapshot (in container)   |
+```mermaid
+flowchart LR
+  bell[Doorbell rings] --> ha[Home Assistant]
+  ha -->|trigger| worker[Doorman worker]
+  worker -->|grab frames| cam[Doorbell camera]
+  worker -->|match faces| gallery[Enrolled faces]
+  worker -->|who's there?| ha
+  ha --> phone[Phone notification]
+```
 
-Deploy overrides: `DEPLOY_HOST`, `DEPLOY_DIR` (default `homelab` / `doorman`). First Docker build
-can take 10–15 min (CUDA base + InsightFace). After `compose up`, deploy waits for the container
-healthcheck (`docker compose up --wait`) — model warmup can take a few minutes. Use
-`DEPLOY_SKIP_BUILD=1` for code-only rsync; `DEPLOY_SKIP_HEALTH=1` to skip the wait; `DEPLOY_QUIET=1`
-to hide build log.
+1. **Ring:** Home Assistant detects the doorbell press and calls Doorman.
+2. **Grab:** Doorman opens the camera stream, pulls a handful of frames, and picks the best face
+   shot.
+3. **Recognize:** An on-device ML model compares the face against people you've enrolled.
+4. **Notify:** Results go back to Home Assistant, which sends the alert to your phone.
 
-## Development workflow
+Recognition runs **only when the bell rings**, not 24/7 surveillance.
 
-**Mac (fast loop)** — edit code, pytest, lint, RTSP smoke test:
+---
+
+## What I built
+
+| Area            | Highlights                                                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ML pipeline** | Face detection and matching with [InsightFace](https://github.com/deepinsight/insightface) on a local GPU; CLAHE preprocessing for porch/night lighting |
+| **Backend**     | Python worker (FastAPI): RTSP ingest, gallery management, recognition API, HA webhook notify                                                            |
+| **Web UI**      | SvelteKit enroll app with guided pose capture from the doorbell stream or phone camera                                                                  |
+| **Ops**         | Docker Compose deploy to a home GPU server, HTTPS for the enroll UI, health checks, integration tests against real doorbell footage                     |
+| **Privacy**     | Faces and embeddings stay on disk at home. No external recognition service.                                                                             |
+
+---
+
+## Tech stack
+
+| Layer      | Tools                                     |
+| ---------- | ----------------------------------------- |
+| ML         | InsightFace, ONNX Runtime (GPU), OpenCV   |
+| Backend    | Python 3.11, FastAPI, Pydantic            |
+| Frontend   | SvelteKit, TypeScript                     |
+| Infra      | Docker Compose, Caddy (TLS), NVIDIA CUDA  |
+| Smart home | Home Assistant (webhook trigger + notify) |
+| Tooling    | Bun, pytest, Ruff, Prettier, Husky        |
+
+---
+
+## Project status
+
+Core pipeline is working end-to-end:
+
+- Enroll faces through a web UI (doorbell or phone camera)
+- Recognize visitors on demand from the doorbell RTSP stream
+- POST results to a Home Assistant webhook
+
+Active work: wiring the doorbell press automation in Home Assistant for fully hands-off alerts. See
+[WORKLOG.md](WORKLOG.md) for phase tracking.
+
+---
+
+## Repo layout
+
+```
+docs/            product spec, enrollment guide, homelab notes
+worker/          Python recognition service + Docker image
+  stream.py      on-demand RTSP frame grab
+  recognize.py   detect + match against enrolled gallery
+  enroll_web.py  enroll API and doorbell preview
+web/             SvelteKit UI → served at /enroll
+scripts/         deploy, test, and dev helpers
+```
+
+---
+
+## Getting started (developers)
+
+**Prerequisites:** Bun, Python 3.11, Docker (for GPU inference). A Reolink (or RTSP) doorbell and
+Home Assistant are assumed for production use.
 
 ```bash
 bun install && bun setup
-cd worker && cp .env.example .env   # STREAM_URL for play-stream
+cd worker && cp .env.example .env   # set STREAM_URL for local RTSP smoke test
 bun run test
-bun play-stream -- -v               # optional: verify stream URL
 ```
 
-**Homelab (GPU truth)** — enrollment and recognition run in Docker:
+| Command                    | Purpose                                   |
+| -------------------------- | ----------------------------------------- |
+| `bun run test`             | Unit tests (InsightFace mocked on Mac)    |
+| `bun run test:integration` | GPU fixture tests on a remote Docker host |
+| `bun run build:web`        | Build the enroll UI                       |
+| `bun run deploy`           | Rsync + Docker rebuild on homelab         |
+| `bun play-stream`          | RTSP smoke test (`-- -v` for verbose)     |
 
-```bash
-bun run deploy                      # code / UI changes
-# faces: https://192.168.x.x:8768/enroll
-curl -k -X POST https://192.168.x.x:8768/recognize   # test recognition
-```
+Mac is for fast edit/test loops; GPU recognition runs in Docker on a home server. Deploy when
+**code** changes; use the **enroll UI** when **faces** change.
 
-| What                      | Mac | Homelab                |
-| ------------------------- | --- | ---------------------- |
-| pytest, lint, RTSP smoke  | ✓   | —                      |
-| Doorbell fixture tests    | —   | ✓ (`test:integration`) |
-| Enroll faces (web UI)     | ✓   | ✓ (photos on server)   |
-| InsightFace / recognition | —   | ✓ Docker               |
+Deploy env vars: `DEPLOY_HOST` (default `homelab`), `DEPLOY_DIR` (default `doorman`). First Docker
+build can take 10-15 minutes (CUDA base + vision stack).
 
-You don't run recognition locally on Mac — pytest mocks InsightFace. Deploy when **code** changes;
-use the **enroll UI** when **faces** change.
+---
 
-## Layout
+## Documentation
 
-```
-docs/
-worker/          flat Python modules + Docker (deployed to ~/doorman)
-  stream.py      RTSP frame grab (on demand)
-  main.py
-  settings.py
-  db/            homelab runtime only (manifest, photos, gallery.pkl — gitignored)
-scripts/
-web/             SvelteKit UI → worker/static/enroll/ (served at /enroll)
-```
+| Doc                                        | What's inside                                  |
+| ------------------------------------------ | ---------------------------------------------- |
+| [`docs/spec.md`](docs/spec.md)             | Architecture, HA integration, design decisions |
+| [`docs/enrollment.md`](docs/enrollment.md) | Enroll faces via the web UI                    |
+| [`docs/homelab.md`](docs/homelab.md)       | GPU server notes and VRAM budget               |
+| [`worker/README.md`](worker/README.md)     | Worker modules, env vars, Docker               |
 
-## Status
+---
 
-RTSP ingest and recognition pipeline work. HA notify in Phase 2. See [WORKLOG.md](WORKLOG.md).
+## Why this project
+
+I wanted a practical smart-home feature (_who's at the door?_) without depending on a vendor's cloud
+or subscription. Doorman let me work through the full loop: camera ingest, GPU inference, enrollment
+UX, deployment, and home-automation integration, with privacy as a hard constraint.

@@ -29,7 +29,7 @@ worker/
 
 ## Mac vs homelab
 
-|                         | Mac (dev)              | Homelab (3060)            |
+|                         | Mac (dev)             | Homelab (3060)            |
 | ----------------------- | --------------------- | ------------------------- |
 | Edit code, pytest, ruff | ✓                     | — (Docker only)           |
 | RTSP smoke test         | ✓ (`bun play-stream`) | — (use web UI / HA)       |

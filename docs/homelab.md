@@ -5,10 +5,10 @@ GPU VRAM budget and deploy notes for the home inference box that runs Doorman (`
 
 ## Status
 
-| Step                  | Status              |
-| --------------------- | ------------------- |
-| Hardware built        | **Done**            |
-| Doorman vision worker | **In progress**     |
+| Step                  | Status          |
+| --------------------- | --------------- |
+| Hardware built        | **Done**        |
+| Doorman vision worker | **In progress** |
 
 ## Hardware (summary)
 
@@ -28,11 +28,11 @@ Rough **inference** VRAM (`nvidia-smi` often ~0.5–1 GB above weight-only estim
 The homelab already runs another GPU service (~2–3 GB VRAM). Doorman InsightFace adds **&lt;1 GB**
 typical. **Combined peak ~3–4 GB** — comfortable on 12 GB.
 
-| Workload                  | VRAM (typical) | Notes                       |
-| ------------------------- | -------------- | --------------------------- |
-| Doorman (InsightFace)     | ~0.5–1 GB      | This project · port **8768** |
-| Other homelab GPU service | ~2–3 GB        | Already resident on the box |
-| **Doorman + other**       | ~3–4 GB peak   | ✓ fits on 3060              |
+| Workload                  | VRAM (typical) | Notes                          |
+| ------------------------- | -------------- | ------------------------------ |
+| Doorman (InsightFace)     | ~0.5–1 GB      | This project · port **8768**   |
+| Other homelab GPU service | ~2–3 GB        | Already resident on the box    |
+| **Doorman + other**       | ~3–4 GB peak   | ✓ fits on 3060                 |
 | 13B+ LLM (Q4)             | ~8–11 GB+      | Not compatible with both above |
 
 ## Network
